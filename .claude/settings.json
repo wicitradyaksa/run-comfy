@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m bulkgen validate*)",
+      "Bash(python -m bulkgen run*)",
+      "Bash(python -m bulkgen cleanup*)",
+      "Bash(python -m bulkgen gpus*)",
+      "Bash(pytest*)"
+    ],
+    "deny": ["Read(.env)"]
+  }
+}

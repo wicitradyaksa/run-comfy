@@ -1,0 +1,4 @@
+id,prompt,negative,seed
+cat_astronaut,"a cat in an astronaut suit floating above earth, cinematic lighting","blurry, low quality",
+neon_city,"rainy cyberpunk street at night, neon reflections, 35mm film","blurry, low quality",42
+forest_spirit,"glowing forest spirit among ancient trees, volumetric fog","blurry, low quality",

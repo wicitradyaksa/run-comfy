@@ -1,0 +1,37 @@
+# bulkgen config. Secrets go in .env (RUNPOD_API_KEY=...), never here.
+
+[runpod]
+name_prefix = "bulkgen"            # every pod we create is named bulkgen-N (used by `cleanup`)
+# Tried in order until one has capacity. `python -m bulkgen gpus` lists valid ids.
+gpu_types = ["NVIDIA GeForce RTX 4090", "NVIDIA RTX A6000", "NVIDIA L40S"]
+cloud_type = "SECURE"              # SECURE | COMMUNITY | ALL
+# ONE of these is required: a RunPod template id, or a Docker image that starts ComfyUI on :8188
+template_id = ""
+image = ""
+# Strongly recommended: a network volume that already holds your models, so pods boot in
+# ~1-3 min instead of re-downloading 20-60 GB every run. Pods must be in the volume's DC.
+network_volume_id = ""
+data_center_id = ""
+container_disk_gb = 40
+comfy_port = 8188
+hourly_rate_estimate_usd = 0.80    # used only if RunPod doesn't report the price
+# env = { HF_TOKEN = "..." }       # extra env vars passed to the pod
+
+[pipeline]
+workflow = "workflows/workflow_api.json"   # ComfyUI "Export (API)" JSON with {{placeholders}}
+jobs = "jobs.csv"
+output_dir = "output"
+pods = 1                 # >1 = parallel GPUs; the queue is shared between them
+inflight_per_pod = 2     # jobs queued on each ComfyUI at once (keeps the GPU busy)
+max_retries = 2          # per job, for OOM / transient errors (VRAM is freed before retry)
+boot_timeout_s = 1200
+job_timeout_s = 1800
+max_pod_restarts = 1     # replace a pod that dies mid-run
+# Hard safety stops - pods are terminated when either is hit
+max_runtime_min = 240
+max_spend_usd = 25.0
+
+[post]
+concat = false           # stitch all output videos (CSV order) into one file with ffmpeg
+concat_output = "final.mp4"
+loudnorm = true
