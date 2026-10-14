@@ -1,4 +1,4 @@
-"""The orchestrator: pods up -> drain queue -> download -> pods down. Always tears down."""
+"""Orchestration. Pod backend lives here; serverless backend in serverless.py."""
 from __future__ import annotations
 
 import asyncio
@@ -21,36 +21,30 @@ class _StopBoot(Exception):
     pass
 
 
-class Runner:
-    def __init__(self, cfg: Config, pods: PodManager | None = None, base_url: str | None = None,
-                 client_factory: Callable[[str], ComfyClient] = ComfyClient,
-                 poll_interval: float = 3, boot_interval: float = 10):
+class BaseRunner:
+    """Shared by both backends: jobs, resumable state, budget watchdog, report."""
+
+    def __init__(self, cfg: Config):
         self.cfg, self.pc = cfg, cfg.pipeline
-        self.pods, self.base_url = pods, base_url
-        self.client_factory = client_factory
-        self.poll_interval, self.boot_interval = poll_interval, boot_interval
         self.out = cfg.path(self.pc.output_dir)
         self.state = State(self.out / "state.jsonl")
         self.workflow = json.loads(cfg.path(self.pc.workflow).read_text())
         self.jobs = load_jobs(cfg.path(self.pc.jobs))
-        self.queue: asyncio.Queue[Job] = asyncio.Queue()
-        self.in_flight = 0
-        self.clock: dict[str, tuple[float, float]] = {}  # pod -> (start, $/hr)
-        self.spent_closed = 0.0
         self.t0 = time.monotonic()
         self.watchdog_interval = 5.0
 
-    # ---------- money ----------
     def spend(self) -> float:
-        now = time.monotonic()
-        return self.spent_closed + sum((now - t) / 3600 * r for t, r in self.clock.values())
+        raise NotImplementedError
 
-    def _close_clock(self, pid: str):
-        if pid in self.clock:
-            t, r = self.clock.pop(pid)
-            self.spent_closed += (time.monotonic() - t) / 3600 * r
+    def _pending(self) -> list[Job]:
+        errs = validate(self.workflow, self.jobs)
+        if errs:
+            raise SystemExit("validation failed:\n  " + "\n  ".join(errs))
+        pending = [j for j in self.jobs if j.id not in self.state.done]
+        log.info("%d jobs, %d already done, %d to run", len(self.jobs), len(self.jobs) - len(pending), len(pending))
+        return pending
 
-    async def _watchdog(self, main: asyncio.Task):
+    async def _watchdog(self, main: asyncio.Future):
         while not main.done():
             await asyncio.sleep(self.watchdog_interval)
             mins = (time.monotonic() - self.t0) / 60
@@ -60,6 +54,63 @@ class Runner:
             elif mins > self.pc.max_runtime_min:
                 log.error("max runtime %d min hit - stopping", self.pc.max_runtime_min)
                 main.cancel()
+
+    def _output_path(self, job: Job, i: int, n: int, filename: str) -> Path:
+        suffix = Path(filename).suffix
+        return self.out / (f"{job.id}{suffix}" if n == 1 else f"{job.id}_{i:02d}{suffix}")
+
+    def _done(self, job: Job, saved: list[Path], secs: float, where: str):
+        rel = [str(p.relative_to(self.out)) for p in saved]
+        self.state.record({"id": job.id, "status": "done", "files": rel, "seconds": round(secs, 1)})
+        n_done = sum(1 for j in self.jobs if j.id in self.state.done)
+        log.info("job %s done in %.0fs on %s -> %s  [%d/%d, $%.2f so far]",
+                 job.id, secs, where, ", ".join(rel), n_done, len(self.jobs), self.spend())
+
+    def _failed(self, job: Job, err: Exception | str):
+        log.error("job %s: FAILED after %d attempts: %s", job.id, job.attempts, err)
+        self.state.record({"id": job.id, "status": "failed", "error": str(err)[:1000]})
+
+    def _report(self) -> dict:
+        rows = []
+        for j in self.jobs:
+            rec = self.state.done.get(j.id) or self.state.failed.get(j.id) or {"status": "not_run"}
+            rows.append({"id": j.id, "status": rec["status"], "files": ";".join(rec.get("files", [])),
+                         "seconds": rec.get("seconds", ""), "error": rec.get("error", "")})
+        self.out.mkdir(parents=True, exist_ok=True)
+        with (self.out / "report.csv").open("w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0]))
+            w.writeheader()
+            w.writerows(rows)
+        summary = {s: sum(r["status"] == s for r in rows) for s in ("done", "failed", "not_run")}
+        summary["gpu_cost_usd"] = round(self.spend(), 2)
+        summary["ordered_files"] = [self.out / f for r in rows if r["status"] == "done"
+                                    for f in r["files"].split(";") if f]
+        return summary
+
+
+class Runner(BaseRunner):
+    """Pod backend: pods up -> drain shared queue -> pods down."""
+
+    def __init__(self, cfg: Config, pods: PodManager | None = None, base_url: str | None = None,
+                 client_factory: Callable[[str], ComfyClient] = ComfyClient,
+                 poll_interval: float = 3, boot_interval: float = 10):
+        super().__init__(cfg)
+        self.pods, self.base_url = pods, base_url
+        self.client_factory = client_factory
+        self.poll_interval, self.boot_interval = poll_interval, boot_interval
+        self.queue: asyncio.Queue[Job] = asyncio.Queue()
+        self.in_flight = 0
+        self.clock: dict[str, tuple[float, float]] = {}  # pod -> (start, $/hr)
+        self.spent_closed = 0.0
+
+    def spend(self) -> float:
+        now = time.monotonic()
+        return self.spent_closed + sum((now - t) / 3600 * r for t, r in self.clock.values())
+
+    def _close_clock(self, pid: str):
+        if pid in self.clock:
+            t, r = self.clock.pop(pid)
+            self.spent_closed += (time.monotonic() - t) / 3600 * r
 
     # ---------- pods ----------
     def _work_left(self) -> bool:
@@ -147,8 +198,7 @@ class Runner:
                         await client.free_memory()
                         self.queue.put_nowait(job)
                     else:
-                        log.error("job %s: FAILED after %d attempts: %s", job.id, job.attempts, e)
-                        self.state.record({"id": job.id, "status": "failed", "error": str(e)[:1000]})
+                        self._failed(job, e)
                 finally:
                     self.in_flight -= 1
 
@@ -165,24 +215,13 @@ class Runner:
         files = output_files(outputs)
         if not files:
             raise ComfyError("workflow finished but produced no output files (missing Save node?)")
-        saved = []
-        for i, f in enumerate(files):
-            suffix = Path(f["filename"]).suffix
-            name = f"{job.id}{suffix}" if len(files) == 1 else f"{job.id}_{i:02d}{suffix}"
-            saved.append(str((await client.download(f, self.out / name)).relative_to(self.out)))
-        secs = time.monotonic() - t
-        self.state.record({"id": job.id, "status": "done", "files": saved, "seconds": round(secs, 1)})
-        n_done = sum(1 for j in self.jobs if j.id in self.state.done)
-        log.info("job %s done in %.0fs on pod %d -> %s  [%d/%d, $%.2f so far]",
-                 job.id, secs, idx, ", ".join(saved), n_done, len(self.jobs), self.spend())
+        saved = [await client.download(f, self._output_path(job, i, len(files), f["filename"]))
+                 for i, f in enumerate(files)]
+        self._done(job, saved, time.monotonic() - t, f"pod {idx}")
 
     # ---------- entry ----------
     async def run(self) -> dict:
-        errs = validate(self.workflow, self.jobs)
-        if errs:
-            raise SystemExit("validation failed:\n  " + "\n  ".join(errs))
-        pending = [j for j in self.jobs if j.id not in self.state.done]
-        log.info("%d jobs, %d already done, %d to run", len(self.jobs), len(self.jobs) - len(pending), len(pending))
+        pending = self._pending()
         for j in pending:
             self.queue.put_nowait(j)
         if pending:
@@ -200,19 +239,3 @@ class Runner:
                         await asyncio.shield(self._down(pid))
         return self._report()
 
-    def _report(self) -> dict:
-        rows = []
-        for j in self.jobs:
-            rec = self.state.done.get(j.id) or self.state.failed.get(j.id) or {"status": "not_run"}
-            rows.append({"id": j.id, "status": rec["status"], "files": ";".join(rec.get("files", [])),
-                         "seconds": rec.get("seconds", ""), "error": rec.get("error", "")})
-        self.out.mkdir(parents=True, exist_ok=True)
-        with (self.out / "report.csv").open("w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=list(rows[0]))
-            w.writeheader()
-            w.writerows(rows)
-        summary = {s: sum(r["status"] == s for r in rows) for s in ("done", "failed", "not_run")}
-        summary["gpu_cost_usd"] = round(self.spend(), 2)
-        summary["ordered_files"] = [self.out / f for r in rows if r["status"] == "done"
-                                    for f in r["files"].split(";") if f]
-        return summary

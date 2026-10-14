@@ -1,4 +1,4 @@
-"""bulkgen CLI:  run | validate | cleanup | gpus"""
+"""bulkgen CLI:  run | validate | cleanup | gpus | serverless-setup"""
 from __future__ import annotations
 
 import argparse
@@ -7,6 +7,7 @@ import atexit
 import json
 import logging
 import os
+import re
 import signal
 import sys
 from pathlib import Path
@@ -55,11 +56,18 @@ def cmd_run(cfg, args) -> int:
     _setup_logging(cfg.path(cfg.pipeline.output_dir))
     if args.fresh:
         (cfg.path(cfg.pipeline.output_dir) / "state.jsonl").unlink(missing_ok=True)
-    pods = None
-    if not args.url:
-        pods = PodManager(cfg.runpod, cfg.api_key, cfg.path(cfg.pipeline.output_dir) / "pods.json")
-        atexit.register(pods.terminate_all_sync)  # belt and braces
-    runner = Runner(cfg, pods=pods, base_url=args.url)
+    backend = args.backend or cfg.pipeline.backend
+    if backend == "serverless" and not args.url:
+        from .serverless import ServerlessRunner
+
+        runner = ServerlessRunner(cfg)
+    else:
+        pods = None
+        if not args.url:
+            pods = PodManager(cfg.runpod, cfg.api_key, cfg.path(cfg.pipeline.output_dir) / "pods.json")
+            atexit.register(pods.terminate_all_sync)  # belt and braces
+        runner = Runner(cfg, pods=pods, base_url=args.url)
+    log.info("backend: %s", "existing server " + args.url if args.url else backend)
 
     async def main():
         task = asyncio.current_task()
@@ -84,11 +92,42 @@ def cmd_run(cfg, args) -> int:
 
 
 def cmd_cleanup(cfg) -> int:
+    if cfg.serverless.endpoint_id and cfg.api_key:
+        from .serverless import EndpointClient
+
+        async def purge():
+            c = EndpointClient(cfg.serverless.endpoint_id, cfg.api_key)
+            try:
+                return await c.purge_queue()
+            finally:
+                await c.close()
+
+        print("serverless queue purged:", asyncio.run(purge()))
+    if not (cfg.runpod.image or cfg.runpod.template_id):
+        return 0
     from .pods import PodManager
 
     pm = PodManager(cfg.runpod, cfg.api_key, cfg.path(cfg.pipeline.output_dir) / "pods.json")
     killed = pm.sweep()
     print(f"terminated {len(killed)} pod(s): {killed}" if killed else "no bulkgen pods running")
+    return 0
+
+
+def cmd_serverless_setup(cfg, config_path: Path) -> int:
+    from .serverless import setup_endpoint
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    if cfg.serverless.endpoint_id:
+        print(f"already configured: endpoint_id = {cfg.serverless.endpoint_id}")
+        return 0
+    eid = setup_endpoint(cfg.serverless, cfg.api_key)
+    text = config_path.read_text()
+    new, n = re.subn(r'(?m)^(endpoint_id\s*=\s*)""', rf'\g<1>"{eid}"', text, count=1)
+    if n:
+        config_path.write_text(new)
+        print(f"endpoint {eid} ready and saved to {config_path.name}")
+    else:
+        print(f"endpoint {eid} ready - put endpoint_id = \"{eid}\" under [serverless] in {config_path.name}")
     return 0
 
 
@@ -107,9 +146,11 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="spin up pods, process the CSV, download, tear down")
     r.add_argument("--url", help="use an existing ComfyUI server instead of creating pods")
+    r.add_argument("--backend", choices=["pod", "serverless"], help="override [pipeline].backend")
     r.add_argument("--fresh", action="store_true", help="ignore previous progress and redo every job")
     sub.add_parser("validate", help="check workflow + CSV without spending money")
-    sub.add_parser("cleanup", help="terminate any bulkgen pods left running")
+    sub.add_parser("cleanup", help="terminate leftover bulkgen pods and purge the serverless queue")
+    sub.add_parser("serverless-setup", help="create the RunPod serverless endpoint (once)")
     sub.add_parser("gpus", help="list RunPod GPU type ids")
     args = ap.parse_args(argv)
 
@@ -117,7 +158,8 @@ def main(argv=None) -> int:
     _load_dotenv(cfg_path.parent)
     cfg = config_mod.load(cfg_path)
     return {"run": lambda: cmd_run(cfg, args), "validate": lambda: cmd_validate(cfg),
-            "cleanup": lambda: cmd_cleanup(cfg), "gpus": lambda: cmd_gpus(cfg)}[args.cmd]()
+            "cleanup": lambda: cmd_cleanup(cfg), "gpus": lambda: cmd_gpus(cfg),
+            "serverless-setup": lambda: cmd_serverless_setup(cfg, cfg_path)}[args.cmd]()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,2 @@
+[console_scripts]
+bulkgen = bulkgen.cli:main

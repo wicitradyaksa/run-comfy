@@ -18,6 +18,9 @@ hourly_rate_estimate_usd = 0.80    # used only if RunPod doesn't report the pric
 # env = { HF_TOKEN = "..." }       # extra env vars passed to the pod
 
 [pipeline]
+# "pod": rent whole GPUs for the batch (best for big batches, custom images, full control)
+# "serverless": RunPod Serverless + worker-comfyui (no pods to manage, per-second billing, scales to 0)
+backend = "pod"
 workflow = "workflows/workflow_api.json"   # ComfyUI "Export (API)" JSON with {{placeholders}}
 jobs = "jobs.csv"
 output_dir = "output"
@@ -30,6 +33,18 @@ max_pod_restarts = 1     # replace a pod that dies mid-run
 # Hard safety stops - pods are terminated when either is hit
 max_runtime_min = 240
 max_spend_usd = 25.0
+
+[serverless]
+endpoint_id = ""                   # `python -m bulkgen serverless-setup` creates the endpoint and fills this in
+max_concurrent = 3                 # requests in flight; keep <= workers_max
+cost_per_sec_usd = 0.00031         # estimate per active worker, for the budget guard - check your endpoint's price
+# --- only used by serverless-setup ---
+image = ""                         # e.g. "runpod/worker-comfyui:<version>-base"; see the worker-comfyui releases page
+gpu_ids = "ADA_24,AMPERE_24"       # RunPod serverless GPU pools, in preference order
+workers_max = 3
+idle_timeout_s = 5                 # seconds a worker stays warm after its last job
+network_volume_id = ""             # same models volume as the pod backend; mounted at /runpod-volume
+container_disk_gb = 20
 
 [post]
 concat = false           # stitch all output videos (CSV order) into one file with ffmpeg

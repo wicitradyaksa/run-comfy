@@ -24,7 +24,25 @@ class RunPodCfg:
 
 
 @dataclass
+class ServerlessCfg:
+    endpoint_id: str = ""            # filled in by `bulkgen serverless-setup`
+    max_concurrent: int = 3          # jobs in flight; match the endpoint's max workers
+    cost_per_sec_usd: float = 0.00031  # per active worker; estimate, see your endpoint's pricing
+    poll_interval_s: float = 2.0
+    # used only by `serverless-setup`
+    name: str = "bulkgen-comfy"
+    image: str = ""
+    gpu_ids: str = "ADA_24,AMPERE_24"
+    workers_max: int = 3
+    idle_timeout_s: int = 5
+    network_volume_id: str = ""
+    container_disk_gb: int = 20
+    env: dict = field(default_factory=dict)
+
+
+@dataclass
 class PipelineCfg:
+    backend: str = "pod"             # "pod" or "serverless"
     workflow: str = "workflows/workflow_api.json"
     jobs: str = "jobs.csv"
     output_dir: str = "output"
@@ -50,6 +68,7 @@ class Config:
     runpod: RunPodCfg
     pipeline: PipelineCfg
     post: PostCfg
+    serverless: ServerlessCfg
     root: Path
     api_key: str = ""
 
@@ -73,7 +92,10 @@ def load(path: str | Path = "config.toml") -> Config:
         runpod=_build(RunPodCfg, data.get("runpod", {})),
         pipeline=_build(PipelineCfg, data.get("pipeline", {})),
         post=_build(PostCfg, data.get("post", {})),
+        serverless=_build(ServerlessCfg, data.get("serverless", {})),
         root=path.parent,
         api_key=os.environ.get("RUNPOD_API_KEY", ""),
     )
+    if cfg.pipeline.backend not in ("pod", "serverless"):
+        raise ValueError(f"[pipeline].backend must be 'pod' or 'serverless', not {cfg.pipeline.backend!r}")
     return cfg
