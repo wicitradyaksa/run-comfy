@@ -12,3 +12,10 @@ bulkgen = "bulkgen.cli:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["bulkgen"]
