@@ -1,0 +1,55 @@
+{
+  "1": {
+    "class_type": "VHS_LoadVideo",
+    "inputs": {
+      "video": "talking.mp4",
+      "force_rate": 25,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1
+    }
+  },
+  "2": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "voice.wav"
+    }
+  },
+  "3": {
+    "class_type": "LatentSyncNode",
+    "inputs": {
+      "images": [
+        "1",
+        0
+      ],
+      "audio": [
+        "2",
+        0
+      ],
+      "seed": 0,
+      "lips_expression": 1.5,
+      "inference_steps": 20
+    }
+  },
+  "4": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": [
+        "3",
+        0
+      ],
+      "audio": [
+        "3",
+        1
+      ],
+      "frame_rate": 25,
+      "loop_count": 0,
+      "filename_prefix": "run_comfy/lipsync",
+      "format": "video/h264-mp4",
+      "pingpong": false,
+      "save_output": true
+    }
+  }
+}

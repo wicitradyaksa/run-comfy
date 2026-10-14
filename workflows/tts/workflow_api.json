@@ -1,0 +1,8 @@
+{
+  "1": {
+    "class_type": "PrimitiveString",
+    "inputs": {
+      "value": "{{text}}"
+    }
+  }
+}

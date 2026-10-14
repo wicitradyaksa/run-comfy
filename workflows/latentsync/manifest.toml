@@ -1,0 +1,30 @@
+# LatentSync lip-sync polish over an existing talking video
+name = "latentsync"
+kind = "lipsync"
+description = "Optional second pass that tightens mouth sync to the VO. Graph written against ComfyUI core node names; run `run_comfy workflows check --url` on a live pod before relying on it."
+license = "LatentSync Apache-2.0"
+commercial_ok = true
+min_vram_gb = 20
+est_seconds = 120
+verified = false
+
+[inputs.video]
+type = "video"
+node = "1.inputs.video"
+
+[inputs.audio]
+type = "audio"
+node = "2.inputs.audio"
+
+[inputs.seed]
+type = "int"
+node = "3.inputs.seed"
+default = -1
+
+[[custom_nodes]]
+repo = "https://github.com/ShmuelRonen/ComfyUI-LatentSyncWrapper"
+commit = ""
+
+[[custom_nodes]]
+repo = "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"
+commit = ""

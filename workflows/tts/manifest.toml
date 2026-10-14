@@ -1,0 +1,13 @@
+# Placeholder TTS workflow - replace with your exported Chatterbox / F5-TTS graph
+name = "tts"
+kind = "tts"
+description = "Used by [voice].provider = \"comfy\". Export your TTS graph in API format over this file and map `text` (and optional `reference` audio)."
+license = "depends on your TTS model"
+commercial_ok = true
+min_vram_gb = 8
+est_seconds = 15
+verified = false
+
+[inputs.text]
+type = "text"
+node = "1.inputs.value"

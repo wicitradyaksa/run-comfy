@@ -1,0 +1,53 @@
+# Wan 2.2 TI2V-5B image-to-video (b-roll, scene clips) - 720p, ~5 s
+name = "wan22_i2v"
+kind = "i2v"
+description = "Animates a keyframe or product shot. Graph written against ComfyUI core node names; run `run_comfy workflows check --url` on a live pod before relying on it."
+license = "Apache-2.0"
+commercial_ok = true
+min_vram_gb = 24
+est_seconds = 240
+verified = false
+
+[inputs.image]
+type = "image"
+node = "4.inputs.image"
+
+[inputs.prompt]
+type = "text"
+node = "5.inputs.text"
+
+[inputs.seed]
+type = "int"
+node = "9.inputs.seed"
+default = -1
+
+[inputs.length]
+type = "int"
+node = "7.inputs.length"
+default = 121
+description = "frames at 24 fps, must be 4n+1"
+
+[inputs.width]
+type = "int"
+node = "7.inputs.width"
+default = 704
+
+[inputs.height]
+type = "int"
+node = "7.inputs.height"
+default = 1280
+
+[[models]]
+url = "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"
+path = "models/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"
+sha256 = ""
+
+[[models]]
+url = "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+path = "models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+sha256 = ""
+
+[[models]]
+url = "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors"
+path = "models/vae/wan2.2_vae.safetensors"
+sha256 = ""

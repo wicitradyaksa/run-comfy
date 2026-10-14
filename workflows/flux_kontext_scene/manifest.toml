@@ -1,0 +1,43 @@
+# FLUX Kontext: restage a product photo in a new scene / lighting while keeping it intact
+name = "flux_kontext_scene"
+kind = "edit"
+description = "Product photo + instruction -> new lifestyle shot. Graph written against ComfyUI core node names; run `run_comfy workflows check --url` on a live pod before relying on it."
+license = "FLUX.1 Kontext-dev Non-Commercial License (check BFL terms)"
+commercial_ok = false
+min_vram_gb = 24
+est_seconds = 30
+verified = false
+
+[inputs.image]
+type = "image"
+node = "4.inputs.image"
+
+[inputs.prompt]
+type = "text"
+node = "7.inputs.text"
+
+[inputs.seed]
+type = "int"
+node = "11.inputs.seed"
+default = -1
+
+[[models]]
+url = "https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev/resolve/main/flux1-kontext-dev.safetensors"
+path = "models/diffusion_models/flux1-kontext-dev.safetensors"
+gated = true
+sha256 = ""
+
+[[models]]
+url = "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors"
+path = "models/text_encoders/t5xxl_fp8_e4m3fn.safetensors"
+sha256 = ""
+
+[[models]]
+url = "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors"
+path = "models/text_encoders/clip_l.safetensors"
+sha256 = ""
+
+[[models]]
+url = "https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors"
+path = "models/vae/ae.safetensors"
+sha256 = ""

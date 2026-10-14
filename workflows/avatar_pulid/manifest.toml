@@ -1,0 +1,62 @@
+# Consistent presenter: FLUX + PuLID face identity from one reference photo
+name = "avatar_pulid"
+kind = "avatar"
+description = "Same person across every variant/scene from one face photo. Graph written against ComfyUI core node names; run `run_comfy workflows check --url` on a live pod before relying on it."
+license = "FLUX.1-dev Non-Commercial + PuLID (Apache-2.0); needs likeness rights for real people"
+commercial_ok = false
+min_vram_gb = 24
+est_seconds = 35
+verified = false
+
+[inputs.prompt]
+type = "text"
+node = "4.inputs.text"
+
+[inputs.face]
+type = "image"
+node = "23.inputs.image"
+
+[inputs.seed]
+type = "int"
+node = "7.inputs.seed"
+default = -1
+
+[inputs.width]
+type = "int"
+node = "6.inputs.width"
+default = 768
+
+[inputs.height]
+type = "int"
+node = "6.inputs.height"
+default = 1344
+
+[[models]]
+url = "https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors"
+path = "models/diffusion_models/flux1-dev.safetensors"
+gated = true
+sha256 = ""
+
+[[models]]
+url = "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors"
+path = "models/text_encoders/t5xxl_fp8_e4m3fn.safetensors"
+sha256 = ""
+
+[[models]]
+url = "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors"
+path = "models/text_encoders/clip_l.safetensors"
+sha256 = ""
+
+[[models]]
+url = "https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors"
+path = "models/vae/ae.safetensors"
+sha256 = ""
+
+[[models]]
+url = "https://huggingface.co/guozinan/PuLID/resolve/main/pulid_flux_v0.9.1.safetensors"
+path = "models/pulid/pulid_flux_v0.9.1.safetensors"
+sha256 = ""
+
+[[custom_nodes]]
+repo = "https://github.com/balazik/ComfyUI-PuLID-Flux"
+commit = ""

@@ -1,0 +1,54 @@
+# FLUX.1-dev text-to-image: keyframes, product scenes, synthetic presenters
+name = "flux_txt2img"
+kind = "image"
+description = "FLUX.1-dev txt2img. Graph written against ComfyUI core node names; run `run_comfy workflows check --url` on a live pod before relying on it."
+license = "FLUX.1-dev Non-Commercial License (check BFL terms / use a commercial licence for ads)"
+commercial_ok = false
+min_vram_gb = 24
+est_seconds = 25
+verified = false
+
+[inputs.prompt]
+type = "text"
+node = "4.inputs.text"
+
+[inputs.seed]
+type = "int"
+node = "7.inputs.seed"
+default = -1
+
+[inputs.width]
+type = "int"
+node = "6.inputs.width"
+default = 768
+
+[inputs.height]
+type = "int"
+node = "6.inputs.height"
+default = 1344
+
+[inputs.steps]
+type = "int"
+node = "7.inputs.steps"
+default = 28
+
+[[models]]
+url = "https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors"
+path = "models/diffusion_models/flux1-dev.safetensors"
+gated = true
+sha256 = ""
+
+[[models]]
+url = "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors"
+path = "models/text_encoders/t5xxl_fp8_e4m3fn.safetensors"
+sha256 = ""
+
+[[models]]
+url = "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors"
+path = "models/text_encoders/clip_l.safetensors"
+sha256 = ""
+
+[[models]]
+url = "https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors"
+path = "models/vae/ae.safetensors"
+sha256 = ""

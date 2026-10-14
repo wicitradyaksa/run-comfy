@@ -1,0 +1,18 @@
+# Real-ESRGAN 4x then lanczos down to a clean 2x
+name = "upscale_2x"
+kind = "upscale"
+description = "Sharpen product visuals for print-quality crops. Graph written against ComfyUI core node names; run `run_comfy workflows check --url` on a live pod before relying on it."
+license = "Real-ESRGAN BSD-3-Clause"
+commercial_ok = true
+min_vram_gb = 6
+est_seconds = 6
+verified = false
+
+[inputs.image]
+type = "image"
+node = "1.inputs.image"
+
+[[models]]
+url = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"
+path = "models/upscale_models/RealESRGAN_x4plus.pth"
+sha256 = ""

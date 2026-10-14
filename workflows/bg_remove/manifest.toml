@@ -1,0 +1,17 @@
+# Product cut-out (transparent background) with RMBG-2.0
+name = "bg_remove"
+kind = "bg_remove"
+description = "Clean product cut-outs for composites. Graph written against ComfyUI core node names; run `run_comfy workflows check --url` on a live pod before relying on it."
+license = "RMBG-2.0 is CC BY-NC 4.0 (non-commercial) - swap for BiRefNet (MIT) for commercial use"
+commercial_ok = false
+min_vram_gb = 6
+est_seconds = 5
+verified = false
+
+[inputs.image]
+type = "image"
+node = "1.inputs.image"
+
+[[custom_nodes]]
+repo = "https://github.com/1038lab/ComfyUI-RMBG"
+commit = ""

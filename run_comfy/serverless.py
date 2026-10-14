@@ -169,41 +169,67 @@ class ServerlessRunner(BaseRunner):
 
     async def _attempt(self, job: Job):
         t = time.monotonic()
-        rid = await self.client.submit(self._payload(job))
-        deadline = t + self.pc.job_timeout_s + 3600  # extra hour for queueing / cold starts
         try:
-            while True:
-                st = await self.client.status(rid)
-                status = st.get("status")
-                if status == "IN_PROGRESS":
-                    self.running.setdefault(rid, time.monotonic())
-                if status in TERMINAL:
-                    break
-                if time.monotonic() > deadline:
-                    await self.client.cancel(rid)
-                    raise ServerlessError(f"request {rid} still {status} after {deadline - t:.0f}s")
-                await asyncio.sleep(self.sc.poll_interval_s)
-        except asyncio.CancelledError:
-            await asyncio.shield(self.client.cancel(rid))
+            st, exec_s = await execute_request(
+                self.client, self._payload(job), self.pc.job_timeout_s + 3600, self.sc.poll_interval_s, self.running)
+        except ServerlessError as e:
+            self.billed_s += getattr(e, "exec_s", 0.0)  # failed runs still cost GPU time
             raise
-        finally:
-            started = self.running.pop(rid, None)
-        exec_s = (st.get("executionTime") or 0) / 1000 or (time.monotonic() - started if started else 0)
         self.billed_s += exec_s
-        if status != "COMPLETED":
-            raise ServerlessError(f"{status}: {str(st.get('error') or st.get('output'))[:800]}")
         items = output_items(st.get("output"))
-        saved = []
-        for i, it in enumerate(items):
-            dest = self._output_path(job, i, len(items), it["filename"])
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            if it["type"] == "s3_url" or str(it["data"]).startswith("http"):
-                await self.client.fetch(it["data"], dest)
-            else:
-                data = it["data"].split(",", 1)[1] if it["data"].startswith("data:") else it["data"]
-                dest.write_bytes(base64.b64decode(data))
-            saved.append(dest)
+        saved = await save_items(self.client, items,
+                                 lambda i, n, fn: self._output_path(job, i, n, fn))
         self._done(job, saved, time.monotonic() - t, f"serverless ({exec_s:.0f}s GPU)")
+
+
+async def execute_request(client: EndpointClient, payload: dict, timeout_s: float, poll_s: float,
+                          running: dict[str, float] | None = None, on_status=None) -> tuple[dict, float]:
+    """Submit, poll to a terminal state, cancel remotely if we're cancelled. Returns (status, GPU seconds).
+
+    `running` (request id -> start time) lets callers bill in-flight work while it runs."""
+    running = running if running is not None else {}
+    t = time.monotonic()
+    rid = await client.submit(payload)
+    deadline = t + timeout_s
+    try:
+        while True:
+            st = await client.status(rid)
+            status = st.get("status")
+            if on_status:
+                on_status(status)
+            if status == "IN_PROGRESS":
+                running.setdefault(rid, time.monotonic())
+            if status in TERMINAL:
+                break
+            if time.monotonic() > deadline:
+                await client.cancel(rid)
+                raise ServerlessError(f"request {rid} still {status} after {timeout_s:.0f}s")
+            await asyncio.sleep(poll_s)
+    except asyncio.CancelledError:
+        await asyncio.shield(client.cancel(rid))
+        raise
+    finally:
+        started = running.pop(rid, None)
+    exec_s = (st.get("executionTime") or 0) / 1000 or (time.monotonic() - started if started else 0)
+    if status != "COMPLETED":
+        err = ServerlessError(f"{status}: {str(st.get('error') or st.get('output'))[:800]}")
+        err.exec_s = exec_s
+        raise err
+    return st, exec_s
+
+
+async def save_items(client: EndpointClient, items: list[dict], dest_for) -> list[Path]:
+    saved = []
+    for i, it in enumerate(items):
+        dest = dest_for(i, len(items), it["filename"])
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if it["type"] == "s3_url" or str(it["data"]).startswith("http"):
+            await client.fetch(it["data"], dest)
+        else:
+            data = it["data"].split(",", 1)[1] if it["data"].startswith("data:") else it["data"]
+            dest.write_bytes(base64.b64decode(data))
+        saved.append(dest)
+    return saved
 
 
 def setup_endpoint(sc: ServerlessCfg, api_key: str) -> str:

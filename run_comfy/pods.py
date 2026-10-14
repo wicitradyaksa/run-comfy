@@ -12,12 +12,12 @@ log = logging.getLogger("run_comfy")
 
 
 class PodManager:
-    def __init__(self, cfg: RunPodCfg, api_key: str, registry: Path):
+    def __init__(self, cfg: RunPodCfg, api_key: str, registry: Path, require_image: bool = True):
         import runpod
 
         if not api_key:
             raise SystemExit("RUNPOD_API_KEY is not set (export it or put it in .env)")
-        if not (cfg.image or cfg.template_id):
+        if not (cfg.image or cfg.template_id) and require_image:
             raise SystemExit("config.toml: set [runpod].image or [runpod].template_id")
         runpod.api_key = api_key
         self.rp = runpod
@@ -29,11 +29,11 @@ class PodManager:
         self.registry.parent.mkdir(parents=True, exist_ok=True)
         self.registry.write_text(json.dumps(sorted(self.live)))
 
-    async def create(self, idx: int) -> tuple[str, float]:
-        """Returns (pod_id, $/hr). Walks gpu_types until one has capacity."""
+    async def create(self, idx: int, **overrides) -> tuple[str, float]:
+        """Returns (pod_id, $/hr). Walks gpu_types until one has capacity. `overrides` patch create_pod kwargs."""
         c = self.cfg
         last = None
-        for gpu in c.gpu_types:
+        for gpu in overrides.pop("gpu_types", None) or c.gpu_types:
             kw = dict(
                 name=f"{c.name_prefix}-{idx}", image_name=c.image, gpu_type_id=gpu,
                 cloud_type=c.cloud_type, gpu_count=1, container_disk_in_gb=c.container_disk_gb,
@@ -46,6 +46,9 @@ class PodManager:
                 kw["network_volume_id"] = c.network_volume_id
             if c.data_center_id:
                 kw["data_center_id"] = c.data_center_id
+            kw.update(overrides)
+            if "image_name" in overrides and "template_id" not in overrides:
+                kw.pop("template_id", None)  # an explicit image replaces the configured template
             try:
                 pod = await asyncio.to_thread(self.rp.create_pod, **kw)
             except Exception as e:  # usually "no instances available"

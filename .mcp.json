@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "runpod": {
+      "command": "npx",
+      "args": ["-y", "@runpod/mcp-server@4.2.0"],
+      "env": { "RUNPOD_API_KEY": "${RUNPOD_API_KEY}" }
+    },
+    "comfy": {
+      "command": "uvx",
+      "args": ["--from", "comfy-mcp==0.10.0", "--with", "comfy-cli", "comfy-mcp"],
+      "env": { "COMFYUI_URL": "${COMFYUI_URL:-http://127.0.0.1:8188}" }
+    },
+    "run-comfy": {
+      "command": "python",
+      "args": ["-m", "run_comfy.mcp"]
+    }
+  }
+}

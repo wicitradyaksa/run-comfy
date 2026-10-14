@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 import uuid
 from pathlib import Path
@@ -86,6 +87,38 @@ class ComfyClient:
             await asyncio.sleep(interval)
         await self.interrupt()
         raise ComfyError(f"prompt {prompt_id} timed out after {timeout:.0f}s")
+
+    async def watch_progress(self, prompt_id: str, on_progress) -> None:
+        """Best-effort live progress from ComfyUI's websocket; completion is still decided by /history."""
+        try:
+            import websockets
+        except ImportError:
+            return
+        ws_url = self.base_url.replace("https://", "wss://").replace("http://", "ws://")
+        try:
+            async with websockets.connect(f"{ws_url}/ws?clientId={self.client_id}", open_timeout=15,
+                                          max_size=None) as ws:
+                node = ""
+                async for raw in ws:
+                    if isinstance(raw, bytes):  # preview images
+                        continue
+                    msg = json.loads(raw)
+                    data = msg.get("data", {})
+                    if data.get("prompt_id") not in (None, prompt_id):
+                        continue
+                    if msg.get("type") == "executing":
+                        if data.get("node") is None:
+                            return
+                        node = str(data["node"])
+                    elif msg.get("type") == "progress" and data.get("max"):
+                        on_progress(data["value"] / data["max"], f"node {data.get('node') or node}")
+        except Exception:
+            return
+
+    async def object_info(self) -> dict:
+        r = await self._req("GET", "/object_info")
+        r.raise_for_status()
+        return r.json()
 
     async def interrupt(self):
         try:
