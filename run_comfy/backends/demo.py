@@ -140,7 +140,7 @@ class DemoBackend(Backend):
         return [wav, out / "voice.words.json"]
 
     def _talking(self, wf, v, out):
-        w, h = self._size(v, 720, 1280)
+        w, h = self._size(v, 540, 960)
         secs = media.duration(Path(v["audio"]))
         return [media.ken_burns(Path(v["image"]), out / "talking.mp4", secs, w, h, audio=Path(v["audio"]))]
 
@@ -150,11 +150,11 @@ class DemoBackend(Backend):
         return [out / "lipsync.mp4"]
 
     def _i2v(self, wf, v, out):
-        w, h = self._size(v, 720, 1280)
+        w, h = self._size(v, 540, 960)
         secs = float(v.get("seconds") or 4)
         return [media.ken_burns(Path(v["image"]), out / "clip.mp4", secs, w, h)]
 
     def _t2v(self, wf, v, out):
         img = self._image(wf, v, out)[0]
-        w, h = self._size(v, 720, 1280)
+        w, h = self._size(v, 540, 960)
         return [media.ken_burns(img, out / "clip.mp4", float(v.get("seconds") or 4), w, h)]

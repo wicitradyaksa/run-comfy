@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -26,8 +27,8 @@ def require_ffmpeg():
         raise MediaError("ffmpeg/ffprobe not found - install ffmpeg")
 
 
-def run(cmd: list[str]) -> subprocess.CompletedProcess:
-    r = subprocess.run(cmd, capture_output=True, text=True)
+def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
+    r = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
     if r.returncode != 0:
         raise MediaError(f"{cmd[0]} failed: {r.stderr.strip()[-1500:]}")
     return r
@@ -141,12 +142,12 @@ def cover_filter(w: int, h: int) -> str:
 def ken_burns(image: Path, out: Path, seconds: float, w: int, h: int, fps: int = 30, audio: Path | None = None):
     """Slow zoom over a still image -> mp4 (optionally with an audio track for the same length)."""
     frames = max(1, int(seconds * fps))
-    vf = (f"{cover_filter(w * 2, h * 2)},zoompan=z='min(zoom+0.0008,1.12)':d={frames}"
+    vf = (f"{cover_filter(int(w * 1.25) // 2 * 2, int(h * 1.25) // 2 * 2)},zoompan=z='min(zoom+0.0008,1.12)':d={frames}"
           f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={fps},format=yuv420p")
     args = ["-loop", "1", "-i", str(image)]
     if audio:
         args += ["-i", str(audio)]
-    args += ["-vf", vf, "-t", f"{seconds:.3f}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]
+    args += ["-vf", vf, "-t", f"{seconds:.3f}", "-c:v", "libx264", "-preset", os.environ.get("RUN_COMFY_X264_PRESET", "veryfast"), "-crf", "20"]
     args += (["-c:a", "aac", "-b:a", "192k", "-shortest"] if audio else ["-an"])
     ffmpeg(*args, str(out))
     return out
