@@ -269,3 +269,24 @@ def test_errors_are_clear(tmp_path):
     b = f.create_batch("x", "ugc")
     with pytest.raises(FactoryError, match="no plan"):
         f.build_matrix(b.id)
+
+
+async def test_bad_backend_fails_cleanly_and_restart_recovers(tmp_path, monkeypatch):
+    monkeypatch.delenv("RUNPOD_API_KEY", raising=False)
+    f = make_factory(tmp_path)
+    prod, kit = assets(f, tmp_path)
+    b = f.create_batch("Pods", "product", brand_kit_id=kit.id, product_asset_id=prod.id,
+                       settings={"backend": "pod"})
+    await f.plan(b.id)
+    f.build_matrix(b.id, mode="random", n=1)
+    with pytest.raises(FactoryError, match="RUNPOD_API_KEY"):
+        await f.run(b.id)
+    assert f.store.get(type(b), b.id).status == "failed"
+
+    # simulate a crash mid-render, then a new process starting
+    f.store.update(type(b), b.id, status="running")
+    v = f.store.variants(b.id)[0]
+    f.store.update(type(v), v.id, status="running")
+    f2 = make_factory(tmp_path)
+    assert f2.store.get(type(b), b.id).status == "cancelled"
+    assert f2.store.variants(b.id)[0].status == "pending"

@@ -5,8 +5,16 @@
       "Bash(python -m run_comfy run*)",
       "Bash(python -m run_comfy cleanup*)",
       "Bash(python -m run_comfy gpus*)",
-      "Bash(pytest*)"
+      "Bash(python -m run_comfy batch list*)",
+      "Bash(python -m run_comfy batch status*)",
+      "Bash(python -m run_comfy workflows*)",
+      "Bash(pytest*)",
+      "mcp__run-comfy__list_recipes",
+      "mcp__run-comfy__list_brands",
+      "mcp__run-comfy__get_plan",
+      "mcp__run-comfy__batch_status"
     ],
     "deny": ["Read(.env)"]
-  }
+  },
+  "enabledMcpjsonServers": ["run-comfy"]
 }

@@ -187,7 +187,10 @@ def create_app(cfg: Config, factory: Factory | None = None) -> FastAPI:
     # async so they run on the event loop that owns the background render tasks
     @app.post("/api/batches/{batch_id}/run")
     async def run(batch_id: int):
-        f.start(batch_id)
+        task = f.start(batch_id)
+        await asyncio.sleep(0.05)  # surface immediate failures (bad backend config) as a 400
+        if task.done() and not task.cancelled() and task.exception():
+            raise task.exception()
         return {"ok": True}
 
     @app.post("/api/batches/{batch_id}/cancel")

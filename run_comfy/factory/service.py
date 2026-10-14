@@ -50,6 +50,16 @@ class Factory:
         self.backend_override = backend_override
         self.storage = Storage(cfg.storage)
         self.tasks: dict[int, asyncio.Task] = {}
+        self._recover()
+
+    def _recover(self):
+        """A previous process died mid-render: mark that work interrupted so it can be resumed."""
+        for b in self.store.list(Batch, status="running"):
+            for v in self.store.variants(b.id):
+                if v.status == "running":
+                    self.store.update(Variant, v.id, status="pending")
+            self.store.update(Batch, b.id, status="cancelled", error="interrupted (server restarted) - "
+                              "render remaining to resume; finished stages are reused")
 
     # ------------------------------------------------------------------ setup
     def project(self, name: str = "Default") -> Project:
@@ -277,9 +287,15 @@ class Factory:
                 raise FactoryError("batch has no variants - build the matrix first")
             return b
         s = self.settings_for(b)
+        try:
+            backend = self.make_backend(s["backend"])
+        except (SystemExit, Exception) as e:  # PodManager exits on missing keys; never kill the server
+            msg = str(e) or type(e).__name__
+            self.store.update(Batch, b.id, status="failed", error=msg)
+            self._emit(b.id, {"type": "batch", "status": "failed", "error": msg})
+            raise FactoryError(msg) from None
         self.store.update(Batch, b.id, status="running", started=now(), error="")
         self._emit(b.id, {"type": "batch", "status": "running", "variants": len(todo)})
-        backend = self.make_backend(s["backend"])
         ex = Executor(self.store, self.registry, backend, on_event=lambda e: self._emit(b.id, e),
                       gpu_parallel=max(4, self.cfg.pipeline.pods * self.cfg.pipeline.inflight_per_pod))
         sem = asyncio.Semaphore(self.cfg.factory.max_parallel_variants)
