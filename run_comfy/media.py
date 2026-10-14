@@ -80,6 +80,14 @@ def extract_frames(path: Path, out_dir: Path, n: int = 4) -> list[Path]:
     return frames
 
 
+def poster(video: Path, at: float = 1.0) -> Path:
+    """Save <video>.jpg next to the video: instant gallery thumbnails, and a fallback where H.264 can't play."""
+    out = video.with_suffix(".jpg")
+    t = min(at, max(duration(video) - 0.1, 0))
+    ffmpeg("-ss", f"{t:.2f}", "-i", str(video), "-frames:v", "1", "-q:v", "3", str(out))
+    return out
+
+
 def font_path() -> str | None:
     for f in FONT_CANDIDATES:
         if Path(f).exists():

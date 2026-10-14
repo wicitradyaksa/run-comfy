@@ -74,9 +74,11 @@ def build_ass(words: list[dict], out: Path, w: int, h: int, style: str = "bold_p
               fg: str = "#ffffff", font: str = "Inter", offset: float = 0.0) -> Path:
     subs = pysubs2.SSAFile()
     subs.info.update({"PlayResX": str(w), "PlayResY": str(h), "ScaledBorderAndShadow": "yes", "WrapStyle": "2"})
-    vertical = h > w
-    size = int(w * (0.078 if vertical else 0.045)) if style != "minimal" else int(w * (0.05 if vertical else 0.032))
-    margin_v = int(h * (0.24 if vertical else 0.10))
+    shape = "vertical" if h > w * 1.1 else "square" if h >= w * 0.9 else "landscape"
+    big = {"vertical": 0.078, "square": 0.066, "landscape": 0.045}[shape]
+    small = {"vertical": 0.05, "square": 0.045, "landscape": 0.032}[shape]
+    size = int(w * (small if style == "minimal" else big))
+    margin_v = int(h * {"vertical": 0.24, "square": 0.12, "landscape": 0.10}[shape])
     subs.styles["Default"] = pysubs2.SSAStyle(
         fontname=font, fontsize=size, bold=True, primarycolor=_ass_colour(fg), secondarycolor=_ass_colour("#888888"),
         outlinecolor=_ass_colour("#000000"), backcolor=_ass_colour("#000000", 120),

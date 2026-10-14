@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 from pathlib import Path
 
+from ... import media
 from ...stages import Ref, Stage
 from ..assembly import compose_static, concat_scenes, hook_end, render_video_ad, scene_durations, words_for
 from ..brand import Brand
@@ -53,6 +54,7 @@ async def _assemble_video(sctx, inp):
             caption_style=inp.get("caption_style", "bold_pop"), cta=inp.get("cta", ""),
             logo=Path(inp["logo"]) if inp.get("logo") else None,
             endcard=Path(inp["endcard"]) if inp.get("endcard") else None, lufs=inp.get("lufs", -14.0))
+        await asyncio.to_thread(media.poster, out, 0.8)  # during the hook: presenter on screen
         outs.append(out)
     return outs
 
@@ -64,7 +66,7 @@ def assemble_video(ctx, **inputs) -> Stage:
             "caption_style": s.get("caption_style") or ctx.brand.caption_style or "bold_pop",
             "music": a.get("music"), "logo": a.get("logo"), "endcard": a.get("endcard"),
             "lufs": s.get("lufs", -14.0)}
-    return Stage("assemble", fn=_assemble_video, inputs={**base, **inputs}, version="2", retries=0)
+    return Stage("assemble", fn=_assemble_video, inputs={**base, **inputs}, version="4", retries=0)
 
 
 def _compose(sctx, inp):

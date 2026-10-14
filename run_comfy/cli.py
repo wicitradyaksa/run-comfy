@@ -141,7 +141,7 @@ def cmd_gpus(cfg) -> int:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="run_comfy", description="Bulk ComfyUI generation on RunPod")
+    ap = argparse.ArgumentParser(prog="run_comfy", description="AI ad & content factory on RunPod + ComfyUI")
     ap.add_argument("-c", "--config", default="config.toml")
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="spin up pods, process the CSV, download, tear down")
@@ -152,11 +152,16 @@ def main(argv=None) -> int:
     sub.add_parser("cleanup", help="terminate leftover run-comfy pods and purge the serverless queue")
     sub.add_parser("serverless-setup", help="create the RunPod serverless endpoint (once)")
     sub.add_parser("gpus", help="list RunPod GPU type ids")
+    from .cli_factory import register
+
+    factory_cmds = register(sub)
     args = ap.parse_args(argv)
 
     cfg_path = Path(args.config).resolve()
     _load_dotenv(cfg_path.parent)
     cfg = config_mod.load(cfg_path)
+    if args.cmd in factory_cmds:
+        return factory_cmds[args.cmd](cfg, args)
     return {"run": lambda: cmd_run(cfg, args), "validate": lambda: cmd_validate(cfg),
             "cleanup": lambda: cmd_cleanup(cfg), "gpus": lambda: cmd_gpus(cfg),
             "serverless-setup": lambda: cmd_serverless_setup(cfg, cfg_path)}[args.cmd]()

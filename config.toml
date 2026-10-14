@@ -50,3 +50,35 @@ container_disk_gb = 20
 concat = false           # stitch all output videos (CSV order) into one file with ffmpeg
 concat_output = "final.mp4"
 loudnorm = true
+
+# ---------------------------------------------------------------------------
+# Content factory (dashboard: `python -m run_comfy serve`, CLI: `python -m run_comfy batch new ...`)
+# ---------------------------------------------------------------------------
+[factory]
+data_dir = "data"                  # SQLite db, assets, stage cache, exports
+workflows_dir = "workflows"        # workflows/<name>/{workflow_api.json, manifest.toml}
+backend = "demo"                   # demo (free placeholders) | serverless | pod | url
+comfy_url = ""                     # for backend = "url" (an existing ComfyUI)
+max_parallel_variants = 4
+max_spend_usd = 25.0               # default per-batch budget; GPUs are released when it's hit
+anthropic_model = "claude-opus-5-5"
+qa = true                          # technical checks always; Claude vision review if ANTHROPIC_API_KEY is set
+qa_threshold = 7
+qa_max_regens = 1
+target_lufs = -14.0
+caption_style = "bold_pop"         # bold_pop | karaoke | minimal | none
+
+[voice]
+provider = "demo"                  # demo | elevenlabs (ELEVENLABS_API_KEY) | comfy (your TTS workflow)
+elevenlabs_model = "eleven_multilingual_v2"
+comfy_workflow = "tts"
+
+[storage]
+s3_bucket = ""                     # set to upload exports to S3 / R2 (AWS_* env vars for credentials)
+s3_prefix = "run-comfy/"
+s3_endpoint_url = ""
+public_base_url = ""
+
+[webhooks]
+url = ""                           # receives signed batch.* / variant.completed events
+secret = ""                        # "whsec_..." (Standard Webhooks)
