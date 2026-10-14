@@ -7,5 +7,5 @@
         "seed": "{{seed}}", "steps": 30, "cfg": 7, "sampler_name": "euler", "scheduler": "normal",
         "denoise": 1, "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0]}},
   "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
-  "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "bulkgen/{{job_id}}", "images": ["8", 0]}}
+  "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "run_comfy/{{job_id}}", "images": ["8", 0]}}
 }

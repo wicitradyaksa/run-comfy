@@ -8,8 +8,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-from bulkgen import config as config_mod
-from bulkgen.serverless import EndpointClient, ServerlessRunner, output_items
+from run_comfy import config as config_mod
+from run_comfy.serverless import EndpointClient, ServerlessRunner, output_items
 
 ROOT = Path(__file__).resolve().parents[1]
 

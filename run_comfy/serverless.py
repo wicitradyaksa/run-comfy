@@ -18,7 +18,7 @@ from .config import Config, ServerlessCfg
 from .jobs import Job, job_values, render
 from .runner import BaseRunner
 
-log = logging.getLogger("bulkgen")
+log = logging.getLogger("run_comfy")
 API = "https://api.runpod.ai/v2"
 MAX_PAYLOAD = 9_500_000  # /run rejects bodies over 10 MB
 TERMINAL = {"COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT"}
@@ -112,7 +112,7 @@ class ServerlessRunner(BaseRunner):
             if not cfg.api_key:
                 raise SystemExit("RUNPOD_API_KEY is not set (export it or put it in .env)")
             if not self.sc.endpoint_id:
-                raise SystemExit("[serverless].endpoint_id is empty - run `bulkgen serverless-setup` first")
+                raise SystemExit("[serverless].endpoint_id is empty - run `run_comfy serverless-setup` first")
             client = EndpointClient(self.sc.endpoint_id, cfg.api_key)
         self.client = client
         self.billed_s = 0.0                    # finished worker-seconds

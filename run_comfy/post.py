@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-log = logging.getLogger("bulkgen")
+log = logging.getLogger("run_comfy")
 VIDEO = {".mp4", ".webm", ".mov", ".mkv"}
 
 

@@ -14,7 +14,7 @@ from .config import Config
 from .jobs import Job, State, job_values, load_jobs, render, validate
 from .pods import PodManager
 
-log = logging.getLogger("bulkgen")
+log = logging.getLogger("run_comfy")
 
 
 class _StopBoot(Exception):

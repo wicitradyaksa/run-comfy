@@ -8,10 +8,10 @@ from pathlib import Path
 import httpx
 import pytest
 
-from bulkgen import config as config_mod
-from bulkgen.comfy import ComfyClient
-from bulkgen.jobs import load_jobs, render, validate
-from bulkgen.runner import Runner
+from run_comfy import config as config_mod
+from run_comfy.comfy import ComfyClient
+from run_comfy.jobs import load_jobs, render, validate
+from run_comfy.runner import Runner
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -48,7 +48,7 @@ class FakeComfy:
             else:
                 self.history[pid] = {"status": {"status_str": "success", "completed": True},
                                      "outputs": {"9": {"images": [
-                                         {"filename": f"{job}_00001_.png", "subfolder": "bulkgen", "type": "output"},
+                                         {"filename": f"{job}_00001_.png", "subfolder": "run_comfy", "type": "output"},
                                          {"filename": "preview.png", "subfolder": "", "type": "temp"}]}}}
             return httpx.Response(200, json={"prompt_id": pid})
         if p.startswith("/history/"):

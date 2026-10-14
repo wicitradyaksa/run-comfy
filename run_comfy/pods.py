@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .config import RunPodCfg
 
-log = logging.getLogger("bulkgen")
+log = logging.getLogger("run_comfy")
 
 
 class PodManager:
@@ -22,7 +22,7 @@ class PodManager:
         runpod.api_key = api_key
         self.rp = runpod
         self.cfg = cfg
-        self.registry = registry  # pod ids we own, survives kill -9 for `bulkgen cleanup`
+        self.registry = registry  # pod ids we own, survives kill -9 for `run_comfy cleanup`
         self.live: dict[str, dict] = {}
 
     def _save(self):
@@ -87,7 +87,7 @@ class PodManager:
                 log.warning("terminate %s failed (%s), retrying", pid, e)
                 await asyncio.sleep(2 ** attempt)
         else:
-            log.error("!! could not terminate %s - run `bulkgen cleanup` or kill it in the console", pid)
+            log.error("!! could not terminate %s - run `run_comfy cleanup` or kill it in the console", pid)
             return
         self.live.pop(pid, None)
         self._save()

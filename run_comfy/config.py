@@ -9,7 +9,7 @@ from pathlib import Path
 
 @dataclass
 class RunPodCfg:
-    name_prefix: str = "bulkgen"
+    name_prefix: str = "run-comfy"
     gpu_types: list[str] = field(default_factory=lambda: ["NVIDIA GeForce RTX 4090"])
     cloud_type: str = "SECURE"
     image: str = ""
@@ -25,12 +25,12 @@ class RunPodCfg:
 
 @dataclass
 class ServerlessCfg:
-    endpoint_id: str = ""            # filled in by `bulkgen serverless-setup`
+    endpoint_id: str = ""            # filled in by `run_comfy serverless-setup`
     max_concurrent: int = 3          # jobs in flight; match the endpoint's max workers
     cost_per_sec_usd: float = 0.00031  # per active worker; estimate, see your endpoint's pricing
     poll_interval_s: float = 2.0
     # used only by `serverless-setup`
-    name: str = "bulkgen-comfy"
+    name: str = "run-comfy"
     image: str = ""
     gpu_ids: str = "ADA_24,AMPERE_24"
     workers_max: int = 3

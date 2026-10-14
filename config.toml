@@ -1,8 +1,8 @@
-# bulkgen config. Secrets go in .env (RUNPOD_API_KEY=...), never here.
+# run-comfy config. Secrets go in .env (RUNPOD_API_KEY=...), never here.
 
 [runpod]
-name_prefix = "bulkgen"            # every pod we create is named bulkgen-N (used by `cleanup`)
-# Tried in order until one has capacity. `python -m bulkgen gpus` lists valid ids.
+name_prefix = "run-comfy"            # every pod we create is named run-comfy-N (used by `cleanup`)
+# Tried in order until one has capacity. `python -m run_comfy gpus` lists valid ids.
 gpu_types = ["NVIDIA GeForce RTX 4090", "NVIDIA RTX A6000", "NVIDIA L40S"]
 cloud_type = "SECURE"              # SECURE | COMMUNITY | ALL
 # ONE of these is required: a RunPod template id, or a Docker image that starts ComfyUI on :8188
@@ -35,7 +35,7 @@ max_runtime_min = 240
 max_spend_usd = 25.0
 
 [serverless]
-endpoint_id = ""                   # `python -m bulkgen serverless-setup` creates the endpoint and fills this in
+endpoint_id = ""                   # `python -m run_comfy serverless-setup` creates the endpoint and fills this in
 max_concurrent = 3                 # requests in flight; keep <= workers_max
 cost_per_sec_usd = 0.00031         # estimate per active worker, for the budget guard - check your endpoint's price
 # --- only used by serverless-setup ---

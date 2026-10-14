@@ -1,4 +1,4 @@
-"""bulkgen CLI:  run | validate | cleanup | gpus | serverless-setup"""
+"""run_comfy CLI:  run | validate | cleanup | gpus | serverless-setup"""
 from __future__ import annotations
 
 import argparse
@@ -16,7 +16,7 @@ from . import config as config_mod
 from .jobs import load_jobs, validate
 from .post import concat
 
-log = logging.getLogger("bulkgen")
+log = logging.getLogger("run_comfy")
 
 
 def _load_dotenv(root: Path):
@@ -109,7 +109,7 @@ def cmd_cleanup(cfg) -> int:
 
     pm = PodManager(cfg.runpod, cfg.api_key, cfg.path(cfg.pipeline.output_dir) / "pods.json")
     killed = pm.sweep()
-    print(f"terminated {len(killed)} pod(s): {killed}" if killed else "no bulkgen pods running")
+    print(f"terminated {len(killed)} pod(s): {killed}" if killed else "no run-comfy pods running")
     return 0
 
 
@@ -141,7 +141,7 @@ def cmd_gpus(cfg) -> int:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="bulkgen", description="Bulk ComfyUI generation on RunPod")
+    ap = argparse.ArgumentParser(prog="run_comfy", description="Bulk ComfyUI generation on RunPod")
     ap.add_argument("-c", "--config", default="config.toml")
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run", help="spin up pods, process the CSV, download, tear down")
@@ -149,7 +149,7 @@ def main(argv=None) -> int:
     r.add_argument("--backend", choices=["pod", "serverless"], help="override [pipeline].backend")
     r.add_argument("--fresh", action="store_true", help="ignore previous progress and redo every job")
     sub.add_parser("validate", help="check workflow + CSV without spending money")
-    sub.add_parser("cleanup", help="terminate leftover bulkgen pods and purge the serverless queue")
+    sub.add_parser("cleanup", help="terminate leftover run-comfy pods and purge the serverless queue")
     sub.add_parser("serverless-setup", help="create the RunPod serverless endpoint (once)")
     sub.add_parser("gpus", help="list RunPod GPU type ids")
     args = ap.parse_args(argv)
