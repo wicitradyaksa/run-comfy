@@ -59,3 +59,20 @@ async def test_events_stream_history(app):
     f = app.state.factory
     f.bus.publish(1, {"type": "batch", "status": "running"})
     assert json.loads(json.dumps(f.bus.history(1)))[0]["status"] == "running"
+
+
+async def test_infra_plan_endpoint(app, monkeypatch):
+    monkeypatch.delenv("RUNPOD_API_KEY", raising=False)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+        st = (await c.get("/api/infra?backend=serverless")).json()
+        assert st["plan"]["creates_volume"] and not st["running"]
+        p = (await c.post("/api/infra/setup", json={"workflows": ["upscale_2x"], "dry_run": True})).json()
+        assert p["plan"]["missing_models"] == ["models/upscale_models/RealESRGAN_x4plus.pth"]
+        # a real run without keys fails inside the background job with a readable error
+        assert (await c.post("/api/infra/setup", json={"dry_run": False})).json()["ok"]
+        for _ in range(50):
+            st = (await c.get("/api/infra")).json()
+            if not st["running"]:
+                break
+            await asyncio.sleep(0.05)
+        assert "RUNPOD_API_KEY" in st["error"]

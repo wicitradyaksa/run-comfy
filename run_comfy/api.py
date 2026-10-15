@@ -54,6 +54,12 @@ class ExportIn(BaseModel):
     approved_only: bool = True
 
 
+class SetupIn(BaseModel):
+    backend: str = "serverless"
+    workflows: list[str] | None = None
+    dry_run: bool = True
+
+
 def create_app(cfg: Config, factory: Factory | None = None) -> FastAPI:
     app = FastAPI(title="run-comfy", version="2.0")
     f = factory or Factory(cfg)
@@ -85,6 +91,34 @@ def create_app(cfg: Config, factory: Factory | None = None) -> FastAPI:
     @app.get("/api/workflows")
     def workflows():
         return [wf.public() for wf in f.registry.values()]
+
+    # ---------------- infrastructure ----------------
+    infra_job: dict = {"task": None, "log": [], "error": "", "actions": []}
+
+    @app.get("/api/infra")
+    def infra_status(backend: str | None = None):
+        b = backend or (cfg.factory.backend if cfg.factory.backend in ("serverless", "pod") else "serverless")
+        t = infra_job["task"]
+        return {"plan": f.infra().plan(None, b), "running": bool(t and not t.done()),
+                "log": infra_job["log"][-50:], "error": infra_job["error"], "actions": infra_job["actions"]}
+
+    @app.post("/api/infra/setup")
+    async def infra_setup(body: SetupIn):
+        if body.dry_run:
+            return {"plan": f.infra().plan(body.workflows, body.backend)}
+        if infra_job["task"] and not infra_job["task"].done():
+            raise HTTPException(409, "setup is already running")
+        infra_job.update(log=[], error="", actions=[])
+
+        async def go():
+            try:
+                rep = await f.infra(lambda e: infra_job["log"].append(e)).ensure(body.workflows, body.backend)
+                infra_job["actions"] = rep.actions
+            except BaseException as e:  # never let a setup error escape the background task
+                infra_job["error"] = str(e) or type(e).__name__
+
+        infra_job["task"] = asyncio.create_task(go())
+        return {"ok": True}
 
     # ---------------- brands ----------------
     @app.get("/api/brands")

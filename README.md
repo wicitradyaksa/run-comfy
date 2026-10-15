@@ -69,26 +69,42 @@ done in assembly, so extra ratios add no GPU cost.
 
 ## Going live on RunPod
 
-1. `cp .env.example .env` and fill in `RUNPOD_API_KEY`. Add `ANTHROPIC_API_KEY` for Claude writing
-   and vision QA, `ELEVENLABS_API_KEY` for premium voices, and `HF_TOKEN` for gated FLUX weights.
-2. **Models.** Create a RunPod network volume, set `[runpod].network_volume_id` and `data_center_id`,
-   then run `python -m run_comfy seed-volume`. It downloads every model listed in the workflow
-   manifests onto the volume and terminates its pod.
-3. **Image.** Run `python -m run_comfy build-image --base runpod/worker-comfyui:<version>-base`,
-   then build and push the Dockerfile. Use the image as `[serverless].image` (then run
-   `python -m run_comfy serverless-setup`) or as `[runpod].image` for pods.
-4. **Verify the workflow pack.** On a live ComfyUI (a pod's URL), run
-   `python -m run_comfy workflows check --url https://<pod>-8188.proxy.runpod.net`. It compares
-   every graph with the installed nodes. Fix what it reports, then set `verified = true` in each
-   manifest.
-5. In the dashboard, pick **Serverless** or **Pods** as the backend and set a budget. The batch stops
-   and releases GPUs when the budget is reached.
+1. `cp .env.example .env`. Add `RUNPOD_API_KEY`, and `ANTHROPIC_API_KEY` for Claude writing and
+   vision QA. For the FLUX workflows, accept the licence on Hugging Face and add `HF_TOKEN`.
+2. Pick **Serverless** (recommended) or **Pods** as the backend, and render.
 
-> **Status:** the engine, factory, dashboard and MCP server are tested end to end against the demo
-> backend and simulated ComfyUI and RunPod servers (pytest and Playwright). The ComfyUI graphs in
-> `workflows/` follow ComfyUI's core node names and the custom nodes listed in their manifests, but
-> they are marked `verified = false` until step 4 passes on a real GPU. Check model licences before
-> commercial use: FLUX.1-dev and RMBG-2.0 are non-commercial, and the dashboard warns about them.
+On the first paid batch, run-comfy sets RunPod up by itself. The estimate shows the cost first, and
+`python -m run_comfy setup --dry-run` shows the same plan from the CLI.
+
+| Step | Automatic? | How |
+|---|---|---|
+| Network volume for models | yes | Created over the RunPod REST API, sized from the workflow manifests (+25%), and saved to `config.toml` |
+| Model downloads | yes, only what's missing | A cheap temporary pod downloads each file onto the volume, checks its sha256 and shuts down. A ledger in `data/` records what's on the volume, so later batches download only what new workflows add |
+| Worker image | yes | Core-node workflows use the stock `runpod/worker-comfyui` image. Workflows with custom nodes (PuLID, RMBG, LatentSync) use the image that `.github/workflows/build-worker.yml` builds on every push, so you never need Docker locally |
+| Serverless endpoint | yes | Created on the volume, and switched to a new image when the custom nodes change |
+| Render pods | yes | Created, health-checked, replaced if they die, and always terminated after the batch or when the budget is hit |
+| Hugging Face licence for gated models | **no** | Accept it on the model page. Setup checks first and tells you which pages, before starting any pod |
+
+You can also run `python -m run_comfy setup` (or use **Settings → RunPod infrastructure**) to set
+everything up ahead of time.
+
+Custom-node image: make the GHCR package public once (GitHub → Packages → run-comfy-worker →
+visibility), or put `GHCR_USER` + `GHCR_PULL_TOKEN` (a token with `read:packages`) in `.env` and
+setup registers it with RunPod.
+
+> **Status:** the engine, factory, dashboard, MCP server and automatic setup are tested end to end
+> against the demo backend and simulated ComfyUI, RunPod REST, model hosts and GHCR (pytest and
+> Playwright). The seed-pod download script also runs for real in the tests. The ComfyUI graphs in
+> `workflows/` are marked `verified = false` until `python -m run_comfy workflows check --url <pod>`
+> passes on a real GPU.
+>
+> Still to confirm on the first real run:
+> - the default `base_image` tag;
+> - that the worker image's `extra_model_paths.yaml` maps every model folder used here (for example
+>   `diffusion_models` and `audio_encoders`);
+> - the pod start command.
+>
+> Model licences: FLUX.1-dev and RMBG-2.0 are non-commercial, and the dashboard warns about them.
 
 ## Claude Code integration
 
@@ -112,7 +128,8 @@ python -m run_comfy batch new --recipe ugc --name "Launch" --brief "..." \
     --product product.png --avatar anna.jpg --mode pairwise --n 12 [--run]
 python -m run_comfy batch list | status ID | run ID | export ID [--all]
 python -m run_comfy workflows list | check --url URL
-python -m run_comfy build-image [--bake-models] | seed-volume | serverless-setup | cleanup | gpus
+python -m run_comfy setup [--dry-run] [--backend serverless|pod]   # volume + models + endpoint, idempotent
+python -m run_comfy build-image [--print-tag] | seed-volume | serverless-setup | cleanup | gpus
 ```
 
 ### Original bulk CSV pipeline

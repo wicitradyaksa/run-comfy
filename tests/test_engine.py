@@ -265,7 +265,8 @@ async def test_seed_volume_polls_until_finished_and_terminates():
                                          "failed": [], "bytes": 10, "current": None})
 
     class Pods(FakePods):
-        cfg = type("C", (), {"name_prefix": "run-comfy"})()
+        cfg = type("C", (), {"name_prefix": "run-comfy", "gpu_types": ["NVIDIA GeForce RTX 4090"],
+                             "seed_gpu_types": ["NVIDIA RTX A4000"]})()
 
         async def create(self, idx, **kw):
             self.kw = kw
@@ -276,5 +277,67 @@ async def test_seed_volume_polls_until_finished_and_terminates():
                                      transport=httpx.MockTransport(handler))
     assert st["state"] == "finished" and pods.terminated == ["pod0"]
     assert pods.kw["ports"] == "8000/http" and "base64 -d" in pods.kw["docker_args"]
+    assert pods.kw["volume_mount_path"] == "/runpod-volume"  # where the SDK mounts the network volume
+    assert pods.kw["gpu_types"] == ["NVIDIA RTX A4000", "NVIDIA GeForce RTX 4090"]  # cheap GPU first
     script = base64.b64decode(pods.kw["docker_args"].split("echo ")[1].split(" |")[0]).decode()
     compile(script, "seed.py", "exec")  # the script we ship to the pod is valid Python
+    assert "ROOT = '/runpod-volume'" in script
+
+
+def test_seed_script_really_downloads_and_verifies(tmp_path):
+    """Run the exact script we ship to the seed pod, against a local HTTP server standing in for HF."""
+    import hashlib
+    import http.server
+    import socket
+    import subprocess
+    import sys
+    import threading
+    import time
+    import urllib.request
+
+    src = tmp_path / "srv"
+    src.mkdir()
+    (src / "a.safetensors").write_bytes(b"A" * 5_000_000)
+    (src / "b.pth").write_bytes(b"B" * 1000)
+    handler = lambda *a, **k: http.server.SimpleHTTPRequestHandler(*a, directory=str(src), **k)  # noqa: E731
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    root = tmp_path / "volume"
+    (root / "models/vae").mkdir(parents=True)
+    (root / "models/vae/b.pth").write_bytes(b"B" * 1000)  # already present -> not re-downloaded
+    models = [
+        {"url": f"{base}/a.safetensors", "path": "models/unet/a.safetensors",
+         "sha256": hashlib.sha256(b"A" * 5_000_000).hexdigest()},
+        {"url": f"{base}/b.pth", "path": "models/vae/b.pth"},
+        {"url": f"{base}/a.safetensors", "path": "models/bad.bin", "sha256": "0" * 64},
+        {"url": f"{base}/missing", "path": "models/missing.bin"},
+    ]
+    cmd = provision.seed_command(models, root=str(root))
+    script = base64.b64decode(cmd.split("echo ")[1].split(" |")[0]).decode()
+    (tmp_path / "seed.py").write_text(script)
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    env = {"SEED_PORT": str(port), "SEED_STATUS_DIR": str(tmp_path / "status"), "PATH": "/usr/bin:/bin"}
+    proc = subprocess.Popen([sys.executable, "-I", str(tmp_path / "seed.py")], env=env)
+    try:
+        st = {}
+        for _ in range(100):
+            try:
+                st = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/status.json", timeout=2).read())
+                if st["state"] == "finished":
+                    break
+            except OSError:
+                pass
+            time.sleep(0.1)
+    finally:
+        proc.kill()
+        httpd.shutdown()
+    assert st["state"] == "finished"
+    assert sorted(st["done"]) == ["models/unet/a.safetensors", "models/vae/b.pth"]
+    assert {f["path"] for f in st["failed"]} == {"models/bad.bin", "models/missing.bin"}
+    assert "sha256 mismatch" in next(f["error"] for f in st["failed"] if f["path"] == "models/bad.bin")
+    assert (root / "models/unet/a.safetensors").stat().st_size == 5_000_000
+    assert not (root / "models/bad.bin").exists() and not (root / "models/bad.bin.part").exists()
+    assert st["files"]["models/vae/b.pth"] == {"sha256": hashlib.sha256(b"B" * 1000).hexdigest(), "bytes": 1000}

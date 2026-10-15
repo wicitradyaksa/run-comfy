@@ -42,6 +42,8 @@ class PodManager:
             )
             if c.template_id:
                 kw["template_id"] = c.template_id
+            if c.docker_args:
+                kw["docker_args"] = c.docker_args
             if c.network_volume_id:
                 kw["network_volume_id"] = c.network_volume_id
             if c.data_center_id:

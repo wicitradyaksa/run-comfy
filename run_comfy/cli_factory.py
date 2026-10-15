@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import sys
 import tomllib
 from pathlib import Path
 
@@ -50,17 +51,23 @@ def register(sub):
     c.add_argument("--name", action="append", help="only these workflows")
 
     bi = sub.add_parser("build-image", help="generate a Dockerfile with pinned custom nodes (+ models)")
-    bi.add_argument("--base", default="runpod/worker-comfyui:5.5.0-base",
-                    help="base image (check the worker-comfyui releases page for the current tag)")
+    bi.add_argument("--base", help="base image (default [serverless].base_image)")
     bi.add_argument("--bake-models", action="store_true")
     bi.add_argument("--name", action="append", help="only these workflows")
     bi.add_argument("--out", type=Path, default=Path("Dockerfile"))
+    bi.add_argument("--print-tag", action="store_true", help="print the content tag for this image and exit")
+
+    su = sub.add_parser("setup", help="create the RunPod volume, download models, set up the endpoint/pod image")
+    su.add_argument("--backend", choices=["serverless", "pod"], help="default: [factory].backend (or serverless)")
+    su.add_argument("--workflow", action="append", help="only what these workflows need (default: all)")
+    su.add_argument("--dry-run", action="store_true", help="show what would be created and what it costs")
+    su.add_argument("--yes", "-y", action="store_true", help="don't ask for confirmation")
 
     sv = sub.add_parser("seed-volume", help="download every manifest model onto the RunPod network volume")
     sv.add_argument("--name", action="append", help="only these workflows")
     sv.add_argument("--image", default="python:3.12-slim")
     return {"serve": cmd_serve, "batch": cmd_batch, "workflows": cmd_workflows,
-            "build-image": cmd_build_image, "seed-volume": cmd_seed_volume}
+            "build-image": cmd_build_image, "seed-volume": cmd_seed_volume, "setup": cmd_setup}
 
 
 def _factory(cfg):
@@ -199,7 +206,12 @@ def cmd_build_image(cfg, args) -> int:
     from .provision import dockerfile
     from .registry import load_registry
 
+    args.base = args.base or cfg.serverless.base_image
     reg = load_registry(cfg.path(cfg.factory.workflows_dir))
+    if args.print_tag:
+        from .provision import image_tag
+        print(image_tag(reg, args.base))
+        return 0
     args.out.write_text(dockerfile(reg, args.base, bake_models=args.bake_models, names=args.name))
     print(f"wrote {args.out}. Build and push it, then use it as [serverless].image or [runpod].image:\n"
           f"  docker build -t you/run-comfy-worker:1 -f {args.out} . && docker push you/run-comfy-worker:1")
@@ -226,3 +238,52 @@ def cmd_seed_volume(cfg, args) -> int:
     for f in st["failed"]:
         print(f"  - {f['path']}: {f['error']}")
     return 1 if st["failed"] else 0
+
+
+def print_plan(p: dict):
+    print(f"backend: {p['backend']}")
+    if p["creates_volume"]:
+        print(f"  + network volume {p['volume_gb']} GB in {p['data_center']} (~${p['volume_monthly_usd']}/month storage)")
+    else:
+        print(f"  = network volume {p['volume_id']}")
+    if p["missing_models"]:
+        print(f"  + download {len(p['missing_models'])} model files, ~{p['download_gb']} GB, "
+              f"~{p['est_minutes']} min on a cheap pod (~${p['est_usd']})")
+    else:
+        print("  = all needed models already on the volume")
+    print(f"  image: {p['image'] or '(custom image repo not set)'}"
+          + (f"  (custom nodes: {len(p['custom_nodes'])})" if p["custom_nodes"] else ""))
+    if p["creates_endpoint"]:
+        print("  + serverless endpoint (scales to zero; no cost while idle)")
+    for w in p["warnings"]:
+        print("  ! " + w)
+
+
+def cmd_setup(cfg, args) -> int:
+    from .factory.service import Factory
+
+    _logging()
+    backend = args.backend or (cfg.factory.backend if cfg.factory.backend in ("serverless", "pod") else "serverless")
+    f = Factory(cfg)
+    plan = f.infra().plan(args.workflow, backend)
+    print_plan(plan)
+    if args.dry_run:
+        return 0
+    if plan["ready"]:
+        print("nothing to do - ready to render")
+        return 0
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print("re-run with --yes to proceed")
+            return 1
+        if input("proceed? [y/N] ").strip().lower() not in ("y", "yes"):
+            return 1
+    try:
+        rep = asyncio.run(f.provision(backend=backend, workflows=args.workflow))
+    except Exception as e:
+        print(f"setup failed: {e}")
+        return 1
+    for a in rep.actions:
+        print("  ✓ " + a)
+    print("ready - render with the dashboard or `python -m run_comfy batch new ... --run`")
+    return 0

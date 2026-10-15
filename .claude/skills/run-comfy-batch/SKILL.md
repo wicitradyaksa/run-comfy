@@ -19,9 +19,11 @@ Prefer the `run-comfy` MCP tools when they are connected; otherwise use the CLI
    It returns Claude-written hooks, scripts, CTAs and prompts. Show the hooks to the user; edit with
    `update_plan` if they want changes.
 3. **Matrix + estimate.** `build_matrix` (default `pairwise`) returns variant codes and an estimate:
-   GPU renders per workflow, $ cost, savings from stage reuse, and warnings (non-commercial model
-   licences, workflows not yet verified on a GPU). **Before rendering on a paid backend
-   (`serverless`, `pod`), show the estimate and get an explicit OK.** `demo` is free.
+   GPU renders per workflow, $ cost, savings from stage reuse, warnings (non-commercial model
+   licences, workflows not yet verified on a GPU) and `setup`: what the first paid run will create
+   (network volume + monthly storage cost, model GB to download, endpoint). **Before rendering on a
+   paid backend (`serverless`, `pod`), show the estimate including setup and get an explicit OK.**
+   `demo` is free. `setup_infra` (dry_run first) can provision ahead of time.
 4. **Render.** `run_batch` (wait=false), then poll `batch_status` every ~30 s. Report progress,
    spend vs budget, and failures with their error text.
 5. **Review.** Look at QA scores/issues in `batch_status`. Suggest `regenerate_variant` for a weak

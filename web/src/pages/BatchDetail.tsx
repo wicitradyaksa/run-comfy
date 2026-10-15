@@ -75,7 +75,7 @@ export default function BatchDetail() {
       </div>
     );
 
-  const running = view.status === "running";
+  const running = view.status === "running" || view.status === "provisioning";
   const budget = Number(view.settings.max_spend_usd ?? 25);
   const pending = view.variants.filter((v) => v.status !== "done").length;
   const visible = view.variants.filter((v) =>
@@ -239,7 +239,9 @@ export default function BatchDetail() {
               {log.map((e, i) => (
                 <li key={i} className="text-[11px] leading-snug">
                   <span className="mr-1.5 tabular-nums text-muted">{new Date(e.ts * 1000).toLocaleTimeString()}</span>
-                  {e.type === "stage" ? (
+                  {e.type === "setup" ? (
+                    <span className="text-accent-2">setup: {e.message}</span>
+                  ) : e.type === "stage" ? (
                     <>
                       <span className="font-mono">{e.stage}</span>{" "}
                       <span className={e.status === "failed" ? "text-bad" : e.cached ? "text-accent-2" : "text-muted"}>

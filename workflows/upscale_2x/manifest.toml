@@ -15,4 +15,5 @@ node = "1.inputs.image"
 [[models]]
 url = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"
 path = "models/upscale_models/RealESRGAN_x4plus.pth"
+size_gb = 0.07
 sha256 = ""

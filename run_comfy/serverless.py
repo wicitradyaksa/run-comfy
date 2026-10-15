@@ -232,26 +232,29 @@ async def save_items(client: EndpointClient, items: list[dict], dest_for) -> lis
     return saved
 
 
-def setup_endpoint(sc: ServerlessCfg, api_key: str) -> str:
-    """Create a serverless template + endpoint for worker-comfyui. Returns the endpoint id."""
+def setup_endpoint(sc: ServerlessCfg, api_key: str, image: str | None = None,
+                   network_volume_id: str | None = None, registry_auth_id: str | None = None) -> str:
+    """Create a serverless template + endpoint for worker-comfyui. Returns the endpoint id (idempotent by name)."""
     import runpod
 
     if not api_key:
         raise SystemExit("RUNPOD_API_KEY is not set")
-    if not sc.image:
+    image = image or sc.image
+    if not image:
         raise SystemExit("set [serverless].image, e.g. runpod/worker-comfyui:<version>-base "
-                         "(see github.com/runpod-workers/worker-comfyui/releases)")
+                         "(see github.com/runpod-workers/worker-comfyui/releases) - or run `run_comfy setup`")
     runpod.api_key = api_key
     for ep in runpod.get_endpoints() or []:
         if ep.get("name", "").split(" ")[0] == sc.name:
             log.info("endpoint %s already exists: %s", sc.name, ep["id"])
             return ep["id"]
-    tpl = runpod.create_template(name=f"{sc.name}-tpl-{int(time.time())}", image_name=sc.image,
+    tpl = runpod.create_template(name=f"{sc.name}-tpl-{int(time.time())}", image_name=image,
                                  is_serverless=True, container_disk_in_gb=sc.container_disk_gb,
-                                 env=sc.env or None)
+                                 env=sc.env or None, registry_auth_id=registry_auth_id)
     kw = dict(name=sc.name, template_id=tpl["id"], gpu_ids=sc.gpu_ids, workers_min=0,
               workers_max=sc.workers_max, idle_timeout=sc.idle_timeout_s, flashboot=True)
-    if sc.network_volume_id:
-        kw["network_volume_id"] = sc.network_volume_id
+    vol = network_volume_id or sc.network_volume_id
+    if vol:
+        kw["network_volume_id"] = vol
     ep = runpod.create_endpoint(**kw)
     return ep["id"]

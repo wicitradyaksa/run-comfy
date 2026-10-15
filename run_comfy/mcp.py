@@ -25,7 +25,8 @@ from .store import BrandKit
 
 INSTRUCTIONS = """run-comfy turns a product brief into a matrix of AI ad variants rendered on RunPod GPUs.
 Typical flow: create_batch (writes hooks/scripts) -> get_plan / update_plan -> build_matrix (shows the cost
-estimate; get the user's OK before spending real money) -> run_batch -> batch_status until done ->
+estimate incl. first-run setup: volume, model downloads, endpoint; get the user's OK before spending real
+money) -> run_batch (sets up RunPod automatically if needed) -> batch_status until done ->
 review_variant -> export_batch. The 'demo' backend is free and renders placeholder media."""
 
 _server = MCPServer(name="run-comfy", instructions=INSTRUCTIONS)
@@ -189,6 +190,20 @@ async def regenerate_variant(variant_id: int, stage: str, prompt: str | None = N
     """Re-render one stage of a variant with a new seed (optionally a new prompt); everything else is reused."""
     v = await factory().regenerate(variant_id, stage, {"prompt": prompt} if prompt else None)
     return {"id": v.id, "code": v.code, "status": v.status, "error": v.error}
+
+
+@server.tool()
+async def setup_infra(backend: str = "serverless", workflows: list[str] | None = None,
+                      dry_run: bool = True) -> dict[str, Any]:
+    """Create the RunPod network volume, download the models the workflows need, and set up the
+    serverless endpoint (or pod image). dry_run=true (default) only returns what would be created and
+    its cost - show that to the user and get an OK before calling again with dry_run=false.
+    Paid batches also run this automatically before rendering."""
+    f = factory()
+    if dry_run:
+        return {"plan": f.infra().plan(workflows, backend)}
+    rep = await f.provision(backend=backend, workflows=workflows)
+    return {"actions": rep.actions, "plan": rep.plan}
 
 
 @server.tool()

@@ -45,6 +45,11 @@ workers_max = 3
 idle_timeout_s = 5                 # seconds a worker stays warm after its last job
 network_volume_id = ""             # same models volume as the pod backend; mounted at /runpod-volume
 container_disk_gb = 20
+# `run_comfy setup` picks the image automatically: base_image when only core ComfyUI nodes are needed,
+# otherwise <custom_image_repo>:<tag> built by .github/workflows/build-worker.yml on every push to main.
+# Make the GHCR package public once, or set GHCR_USER + GHCR_PULL_TOKEN in .env for private pulls.
+base_image = "runpod/worker-comfyui:5.5.0-base"   # check github.com/runpod-workers/worker-comfyui/releases
+custom_image_repo = "ghcr.io/wicitradyaksa/run-comfy-worker"
 
 [post]
 concat = false           # stitch all output videos (CSV order) into one file with ffmpeg
@@ -67,6 +72,8 @@ qa_threshold = 7
 qa_max_regens = 1
 target_lufs = -14.0
 caption_style = "bold_pop"         # bold_pop | karaoke | minimal | none
+auto_provision = true              # serverless/pod batches create the volume + download models + endpoint first
+default_data_center = "EU-RO-1"    # where `setup` creates the network volume (GPUs must be available there)
 
 [voice]
 provider = "demo"                  # demo | elevenlabs (ELEVENLABS_API_KEY) | comfy (your TTS workflow)

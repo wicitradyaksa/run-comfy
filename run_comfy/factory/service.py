@@ -39,7 +39,7 @@ class FactoryError(Exception):
 
 class Factory:
     def __init__(self, cfg: Config, *, store: Store | None = None, bus: EventBus | None = None, llm=None,
-                 backend_override: Backend | None = None):
+                 backend_override: Backend | None = None, infra_factory=None):
         self.cfg = cfg
         fc = cfg.factory
         self.store = store or Store(cfg.path(fc.data_dir))
@@ -50,11 +50,12 @@ class Factory:
         self.backend_override = backend_override
         self.storage = Storage(cfg.storage)
         self.tasks: dict[int, asyncio.Task] = {}
+        self.infra_factory = infra_factory  # tests inject fakes; default builds a real Infra
         self._recover()
 
     def _recover(self):
         """A previous process died mid-render: mark that work interrupted so it can be resumed."""
-        for b in self.store.list(Batch, status="running"):
+        for b in self.store.list(Batch, status="running") + self.store.list(Batch, status="provisioning"):
             for v in self.store.variants(b.id):
                 if v.status == "running":
                     self.store.update(Variant, v.id, status="pending")
@@ -218,10 +219,39 @@ class Factory:
                 warnings.append(f"{w}: not yet verified on a real GPU - run `workflows check` first")
         if s.get("voice_provider") == "elevenlabs":
             warnings.append("ElevenLabs voice cost is billed separately by ElevenLabs")
+        setup = None
+        if s["backend"] in ("pod", "serverless") and renders:
+            setup = self.infra().plan(sorted(renders), s["backend"])
+            warnings += setup["warnings"]
         return {"variants": len(variants), "renders": renders, "gpu_seconds": round(secs),
                 "gpu_seconds_without_cache": round(naive_secs), "usd": round(secs * rate, 2),
                 "usd_without_cache": round(naive_secs * rate, 2), "backend": s["backend"],
-                "rate_per_gpu_second": rate, "warnings": sorted(set(warnings))}
+                "rate_per_gpu_second": rate, "setup": setup, "warnings": sorted(set(warnings))}
+
+    # ------------------------------------------------------------------ infrastructure
+    def infra(self, on_event=None):
+        from ..infra import Infra
+
+        if self.infra_factory:
+            return self.infra_factory(self, on_event)
+        return Infra(self.cfg, self.registry, self.store.data_dir, on_event=on_event)
+
+    def workflows_for(self, batch_id: int) -> list[str]:
+        b = self._batch(batch_id)
+        opts = self.options(b)
+        names = set()
+        for v in self.store.variants(batch_id):
+            names |= {st.workflow for st in self.recipes[b.recipe].stages(self._ctx(b, v, opts)) if st.workflow}
+        return sorted(names)
+
+    async def provision(self, batch_id: int | None = None, backend: str | None = None,
+                        workflows: list[str] | None = None):
+        """Create the volume / download models / set up the endpoint that a batch (or everything) needs."""
+        backend = backend or self.cfg.factory.backend
+        if batch_id is not None:
+            workflows = self.workflows_for(batch_id)
+        emit = (lambda e: self._emit(batch_id, e)) if batch_id is not None else (lambda e: self.bus.publish("infra", e))
+        return await self.infra(emit).ensure(workflows, backend)
 
     def _rate(self, backend: str) -> float:
         if backend == "serverless":
@@ -287,6 +317,18 @@ class Factory:
                 raise FactoryError("batch has no variants - build the matrix first")
             return b
         s = self.settings_for(b)
+        # a fake backend (tests) skips provisioning unless fake infra is injected too
+        real_infra = self.backend_override is None or self.infra_factory is not None
+        if s["backend"] in ("pod", "serverless") and self.cfg.factory.auto_provision and real_infra:
+            self.store.update(Batch, b.id, status="provisioning", error="")
+            self._emit(b.id, {"type": "batch", "status": "provisioning"})
+            try:
+                await self.provision(b.id, s["backend"])
+            except (SystemExit, Exception) as e:  # InfraError, missing keys, network
+                msg = f"setup failed: {e}"
+                self.store.update(Batch, b.id, status="failed", error=msg[:1000])
+                self._emit(b.id, {"type": "batch", "status": "failed", "error": msg})
+                raise FactoryError(msg) from None
         try:
             backend = self.make_backend(s["backend"])
         except (SystemExit, Exception) as e:  # PodManager exits on missing keys; never kill the server

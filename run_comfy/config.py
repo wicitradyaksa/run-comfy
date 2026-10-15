@@ -14,6 +14,7 @@ class RunPodCfg:
     cloud_type: str = "SECURE"
     image: str = ""
     template_id: str = ""
+    docker_args: str = ""            # start command override (set by `run_comfy setup` for the worker image)
     network_volume_id: str = ""
     data_center_id: str = ""
     container_disk_gb: int = 40
@@ -21,6 +22,10 @@ class RunPodCfg:
     comfy_port: int = 8188
     env: dict = field(default_factory=dict)
     hourly_rate_estimate_usd: float = 0.80
+    # cheap GPUs tried first for the model-download pod (it only needs bandwidth, not compute)
+    seed_gpu_types: list[str] = field(default_factory=lambda: [
+        "NVIDIA RTX A4000", "NVIDIA RTX A4500", "NVIDIA RTX A5000", "NVIDIA GeForce RTX 3090"])
+    seed_hourly_rate_usd: float = 0.25
 
 
 @dataclass
@@ -38,6 +43,10 @@ class ServerlessCfg:
     network_volume_id: str = ""
     container_disk_gb: int = 20
     env: dict = field(default_factory=dict)
+    # automatic image choice (`run_comfy setup`): stock worker when only core nodes are needed,
+    # otherwise the image built by .github/workflows/build-worker.yml
+    base_image: str = "runpod/worker-comfyui:5.5.0-base"
+    custom_image_repo: str = ""      # e.g. "ghcr.io/<you>/run-comfy-worker"; tag = custom-node hash
 
 
 @dataclass
@@ -78,6 +87,9 @@ class FactoryCfg:
     target_lufs: float = -14.0
     caption_style: str = "bold_pop"    # bold_pop | karaoke | minimal | none
     demo_delay_s: float = 0.0          # make the demo backend feel real in walkthroughs
+    auto_provision: bool = True        # pod/serverless batches create the volume, endpoint and models first
+    volume_headroom: float = 1.25      # volume size = models x this
+    default_data_center: str = "EU-RO-1"
 
 
 @dataclass
@@ -108,6 +120,7 @@ class Config:
     post: PostCfg
     serverless: ServerlessCfg
     root: Path
+    config_file: Path | None = None
     factory: FactoryCfg = field(default_factory=FactoryCfg)
     voice: VoiceCfg = field(default_factory=VoiceCfg)
     storage: StorageCfg = field(default_factory=StorageCfg)
@@ -127,6 +140,27 @@ def _build(cls, data: dict):
     return cls(**data)
 
 
+def set_value(path: Path, section: str, key: str, value: str) -> bool:
+    """Write `key = "value"` into [section] of a TOML file in place, keeping comments. Returns True on success."""
+    import re
+
+    text = path.read_text() if path.exists() else ""
+    m = re.search(rf"(?m)^\[{re.escape(section)}\]\s*$", text)
+    line = f'{key} = "{value}"'
+    if not m:
+        path.write_text(text.rstrip() + f"\n\n[{section}]\n{line}\n")
+        return True
+    start = m.end()
+    nxt = re.search(r"(?m)^\[", text[start:])
+    end = start + nxt.start() if nxt else len(text)
+    body = text[start:end]
+    new_body, n = re.subn(rf'(?m)^{re.escape(key)}\s*=\s*"[^"\n]*"', line, body, count=1)
+    if not n:
+        new_body = "\n" + line + body  # key not present yet: first line of the section
+    path.write_text(text[:start] + new_body + text[end:])
+    return True
+
+
 def load(path: str | Path = "config.toml") -> Config:
     path = Path(path).resolve()
     data = tomllib.loads(path.read_text()) if path.exists() else {}
@@ -136,6 +170,7 @@ def load(path: str | Path = "config.toml") -> Config:
         post=_build(PostCfg, data.get("post", {})),
         serverless=_build(ServerlessCfg, data.get("serverless", {})),
         root=path.parent,
+        config_file=path,
         factory=_build(FactoryCfg, data.get("factory", {})),
         voice=_build(VoiceCfg, data.get("voice", {})),
         storage=_build(StorageCfg, data.get("storage", {})),

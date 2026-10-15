@@ -1,0 +1,50 @@
+# Builds the ComfyUI worker image with every pinned custom node from workflows/*/manifest.toml and
+# pushes it to GHCR as ghcr.io/<owner>/run-comfy-worker:<content tag>. `run_comfy setup` computes the
+# same tag, so it knows which image to use and whether it has been built yet.
+name: build-worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workflows/**/manifest.toml"
+      - "run_comfy/provision.py"
+      - ".github/workflows/build-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install run-comfy
+        run: pip install -e .
+      - name: Generate Dockerfile and tag
+        id: gen
+        run: |
+          python -m run_comfy build-image --out Dockerfile.worker
+          echo "tag=$(python -m run_comfy build-image --print-tag)" >> "$GITHUB_OUTPUT"
+          echo "repo=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/run-comfy-worker" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.worker
+          push: true
+          tags: |
+            ${{ steps.gen.outputs.repo }}:${{ steps.gen.outputs.tag }}
+            ${{ steps.gen.outputs.repo }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

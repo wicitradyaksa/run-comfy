@@ -98,6 +98,32 @@ export type Variant = {
   stages: Record<string, StageState>;
 };
 
+export type InfraPlan = {
+  backend: string;
+  creates_volume: boolean;
+  volume_id: string | null;
+  volume_gb: number | null;
+  data_center: string;
+  volume_monthly_usd: number;
+  missing_models: string[];
+  download_gb: number;
+  est_minutes: number;
+  est_usd: number;
+  image: string;
+  custom_nodes: string[];
+  creates_endpoint: boolean;
+  ready: boolean;
+  warnings: string[];
+};
+
+export type InfraStatus = {
+  plan: InfraPlan;
+  running: boolean;
+  log: { message: string; ts: number }[];
+  error: string;
+  actions: string[];
+};
+
 export type Estimate = {
   variants: number;
   renders: Record<string, number>;
@@ -107,6 +133,7 @@ export type Estimate = {
   usd_without_cache: number;
   backend: string;
   rate_per_gpu_second: number;
+  setup: InfraPlan | null;
   warnings: string[];
 };
 
@@ -147,7 +174,7 @@ export type BatchView = {
 export type BatchEvent = {
   topic: number;
   ts: number;
-  type: "batch" | "variant" | "stage" | "progress";
+  type: "batch" | "variant" | "stage" | "progress" | "setup";
   status?: string;
   variant_id?: number;
   code?: string;
@@ -182,6 +209,9 @@ async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
 
 export const api = {
   status: () => req<Status>("GET", "/api/status"),
+  infra: (backend?: string) => req<InfraStatus>("GET", `/api/infra${backend ? `?backend=${backend}` : ""}`),
+  setupInfra: (backend: string, dry_run: boolean) =>
+    req<{ ok?: boolean; plan?: InfraPlan }>("POST", "/api/infra/setup", { backend, dry_run }),
   recipes: () => req<Recipe[]>("GET", "/api/recipes"),
   workflows: () => req<Workflow[]>("GET", "/api/workflows"),
   brands: () => req<Brand[]>("GET", "/api/brands"),

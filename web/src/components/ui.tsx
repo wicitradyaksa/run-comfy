@@ -57,6 +57,7 @@ const STATUS: Record<string, string> = {
   pending: "bg-muted/15 text-muted",
   queued: "bg-muted/15 text-muted",
   running: "bg-accent/15 text-accent-2",
+  provisioning: "bg-accent/15 text-accent-2",
   done: "bg-ok/15 text-ok",
   approved: "bg-ok/15 text-ok",
   failed: "bg-bad/15 text-bad",
@@ -67,7 +68,7 @@ const STATUS: Record<string, string> = {
 export function Pill({ status, children }: { status: string; children?: ReactNode }) {
   return (
     <span className={cx("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", STATUS[status] ?? STATUS.draft)}>
-      {status === "running" && <span className="size-1.5 rounded-full bg-current animate-pulse-dot" />}
+      {(status === "running" || status === "provisioning") && <span className="size-1.5 rounded-full bg-current animate-pulse-dot" />}
       {children ?? status}
     </span>
   );

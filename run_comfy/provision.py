@@ -29,6 +29,20 @@ def collect(registry: dict[str, Workflow], names: list[str] | None = None) -> tu
     return list(models.values()), list(nodes.values())
 
 
+def image_tag(registry: dict[str, Workflow], base_image: str) -> str:
+    """Content tag for the custom-node image: changes only when pinned nodes or the base image change."""
+    import hashlib
+    import json
+
+    _, nodes = collect(registry)
+    blob = json.dumps({"base": base_image, "nodes": sorted((n["repo"], n.get("commit", "")) for n in nodes)})
+    return "n" + hashlib.sha256(blob.encode()).hexdigest()[:12]
+
+
+def needs_custom_nodes(registry: dict[str, Workflow], names: list[str] | None = None) -> bool:
+    return bool(collect(registry, names)[1])
+
+
 def dockerfile(registry: dict[str, Workflow], base_image: str, comfy_dir: str = "/comfyui",
                bake_models: bool = False, names: list[str] | None = None) -> str:
     models, nodes = collect(registry, names)
@@ -54,15 +68,16 @@ def dockerfile(registry: dict[str, Workflow], base_image: str, comfy_dir: str = 
 
 SEED_SCRIPT = r'''
 import hashlib, http.server, json, os, threading, urllib.request
-STATUS = {"state": "running", "done": [], "failed": [], "current": None, "bytes": 0}
-os.makedirs("/status", exist_ok=True)
+STATUS = {"state": "running", "done": [], "failed": [], "current": None, "bytes": 0, "files": {}}
+SDIR = os.environ.get("SEED_STATUS_DIR", "/status")
+os.makedirs(SDIR, exist_ok=True)
 def save():
-    open("/status/status.json.tmp", "w").write(json.dumps(STATUS)); os.replace("/status/status.json.tmp", "/status/status.json")
+    open(SDIR + "/status.json.tmp", "w").write(json.dumps(STATUS)); os.replace(SDIR + "/status.json.tmp", SDIR + "/status.json")
 save()
 class H(http.server.SimpleHTTPRequestHandler):
-    def __init__(s, *a, **k): super().__init__(*a, directory="/status", **k)
+    def __init__(s, *a, **k): super().__init__(*a, directory=SDIR, **k)
     def log_message(s, *a): pass
-threading.Thread(target=http.server.ThreadingHTTPServer(("0.0.0.0", 8000), H).serve_forever, daemon=True).start()
+threading.Thread(target=http.server.ThreadingHTTPServer(("0.0.0.0", int(os.environ.get("SEED_PORT", "8000"))), H).serve_forever, daemon=True).start()
 def sha(p):
     h = hashlib.sha256()
     with open(p, "rb") as f:
@@ -71,8 +86,11 @@ def sha(p):
 for m in MODELS:
     dest = os.path.join(ROOT, m["path"]); STATUS["current"] = m["path"]; save()
     try:
-        if os.path.exists(dest) and (not m.get("sha256") or sha(dest) == m["sha256"]):
-            STATUS["done"].append(m["path"]); continue
+        if os.path.exists(dest):
+            digest = sha(dest)
+            if not m.get("sha256") or digest == m["sha256"]:
+                STATUS["files"][m["path"]] = {"sha256": digest, "bytes": os.path.getsize(dest)}
+                STATUS["done"].append(m["path"]); save(); continue
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         req = urllib.request.Request(m["url"], headers={"User-Agent": "run-comfy-seed"})
         if "huggingface.co" in m["url"] and os.environ.get("HF_TOKEN"):
@@ -85,9 +103,11 @@ for m in MODELS:
                 if not c: break
                 f.write(c); STATUS["bytes"] += len(c)
                 if STATUS["bytes"] % (1 << 28) < (1 << 22): save()
-        if m.get("sha256") and sha(dest + ".part") != m["sha256"]:
+        digest = sha(dest + ".part")
+        if m.get("sha256") and digest != m["sha256"]:
             os.remove(dest + ".part"); raise ValueError("sha256 mismatch")
         os.replace(dest + ".part", dest); STATUS["done"].append(m["path"])
+        STATUS["files"][m["path"]] = {"sha256": digest, "bytes": os.path.getsize(dest)}
     except Exception as e:
         STATUS["failed"].append({"path": m["path"], "error": str(e)[:300]})
     save()
@@ -96,7 +116,12 @@ threading.Event().wait()
 '''
 
 
-def seed_command(models: list[dict], root: str = "/workspace") -> str:
+# The RunPod SDK mounts a pod's network volume at /runpod-volume (same path serverless workers use),
+# so models land at /runpod-volume/models/... for both backends.
+VOLUME_ROOT = "/runpod-volume"
+
+
+def seed_command(models: list[dict], root: str = VOLUME_ROOT) -> str:
     import json
 
     script = f"MODELS = {json.dumps(models)}\nROOT = {root!r}\n" + SEED_SCRIPT
@@ -110,9 +135,11 @@ async def seed_volume(pods, models: list[dict], image: str = "python:3.12-slim",
     """Start a throwaway pod on the network volume, download every model, verify, terminate."""
     if not models:
         return {"state": "finished", "done": [], "failed": []}
+    gpus = list(dict.fromkeys([*getattr(pods.cfg, "seed_gpu_types", []), *pods.cfg.gpu_types]))
     pid, _ = await pods.create(99, name=f"{pods.cfg.name_prefix}-seed", image_name=image,
                                docker_args=seed_command(models), ports="8000/http",
-                               container_disk_in_gb=10, env=env or None, start_ssh=False)
+                               container_disk_in_gb=10, env=env or None, start_ssh=False,
+                               volume_mount_path=VOLUME_ROOT, gpu_types=gpus)
     url = f"https://{pid}-8000.proxy.runpod.net/status.json"
     status: dict = {}
     t = time.monotonic()

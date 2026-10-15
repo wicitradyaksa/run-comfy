@@ -1,4 +1,4 @@
-import { AlertTriangle, Play, Zap } from "lucide-react";
+import { AlertTriangle, Play, Server, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, money, type BatchView, type Estimate } from "../api";
 import { Button, Card, cx, Stat, useToast } from "./ui";
@@ -131,6 +131,25 @@ export function MatrixBuilder({ view, onChange, onRun }: { view: BatchView; onCh
                 </div>
               )}
             </div>
+            {est.setup && !est.setup.ready && (
+              <div className="space-y-1 border-t border-line pt-3 text-[11px]">
+                <div className="flex items-center gap-1.5 font-medium text-text">
+                  <Server className="size-3.5 text-accent-2" /> First run sets up RunPod automatically
+                </div>
+                {est.setup.creates_volume && (
+                  <div className="text-muted">
+                    + {est.setup.volume_gb} GB model volume in {est.setup.data_center} (~{money(est.setup.volume_monthly_usd)}/mo)
+                  </div>
+                )}
+                {est.setup.missing_models.length > 0 && (
+                  <div className="text-muted">
+                    + download {est.setup.missing_models.length} models, {est.setup.download_gb} GB (~{est.setup.est_minutes} min, ~
+                    {money(est.setup.est_usd)})
+                  </div>
+                )}
+                {est.setup.creates_endpoint && <div className="text-muted">+ serverless endpoint (idle = free)</div>}
+              </div>
+            )}
             {est.warnings.length > 0 && (
               <div className="space-y-1.5 border-t border-line pt-3">
                 {est.warnings.map((w) => (
